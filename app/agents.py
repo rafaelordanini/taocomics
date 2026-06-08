@@ -950,10 +950,11 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
         headers["Authorization"] = f"Bearer {worker_token}"
 
     if sse_send:
-        sse_send("[Artista (Desenho)] Aguardando geração da imagem pelo Codex... (pode levar até 10 minutos)")
+        sse_send("[Artista (Desenho)] Aguardando geração da imagem pelo Codex... (pode levar até 5 minutos)")
 
     import threading
 
+    MAX_WAIT = 360  # 6 minutos — um pouco acima do timeout do worker (5min)
     result_container = {}
     error_container = {}
 
@@ -963,7 +964,7 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
                 f"{worker_url}/generate-image",
                 json={"prompt": prompt},
                 headers=headers,
-                timeout=3700.0
+                timeout=370.0
             )
             result_container["response"] = response
         except Exception as e:
@@ -980,6 +981,10 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
             elapsed += interval
             mins = elapsed // 60
             secs = elapsed % 60
+            if elapsed >= MAX_WAIT:
+                if sse_send:
+                    sse_send(f"[Artista (Desenho)] ⚠️ Codex travou após {mins}m{secs:02d}s sem resposta. Reinicie o worker na VM com: bash ~/codex-worker/restart.sh")
+                raise RuntimeError(f"Codex não respondeu após {MAX_WAIT}s. Worker travado — reinicie o serviço na VM.")
             if sse_send:
                 sse_send(f"[Artista (Desenho)] Aguardando Codex... ({mins}m{secs:02d}s decorridos — normal para geração de imagem)")
 
@@ -1810,8 +1815,9 @@ def _especialista_pagina_primary(
         f"1. Leitura taoísta da arte: os elementos visuais (natureza, névoa, luz, símbolos, gestos) evocam corretamente a filosofia taoísta?\n"
         f"2. Caracteres e ideogramas chineses visíveis na arte: estão graficamente corretos, legíveis e conceitualmente adequados?\n"
         f"3. Qualidade filosófica dos diálogos visíveis: as falas e narrações refletem adequadamente os princípios taoístas do autor da obra?\n\n"
-        f"NÃO compare a imagem com nenhum roteiro, script ou prompt. NÃO verifique se a arte corresponde ao que foi planejado. "
-        f"Analise SOMENTE o que está desenhado na imagem.\n"
+        f"NÃO compare a imagem com nenhum roteiro, script, prompt ou versão anterior. NÃO verifique se a arte corresponde ao que foi planejado ou escrito. "
+        f"NÃO sinalize diferenças entre o texto visível na imagem e qualquer texto de roteiro. "
+        f"Analise SOMENTE o que está desenhado na imagem — julgue a obra por si mesma.\n"
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
@@ -1874,8 +1880,9 @@ def _especialista_pagina_fallback(
         f"1. Leitura taoísta da arte: os elementos visuais (natureza, névoa, luz, símbolos, gestos) evocam corretamente a filosofia taoísta?\n"
         f"2. Caracteres e ideogramas chineses visíveis na arte: estão graficamente corretos, legíveis e conceitualmente adequados?\n"
         f"3. Qualidade filosófica dos diálogos visíveis: as falas e narrações refletem adequadamente os princípios taoístas do autor da obra?\n\n"
-        f"NÃO compare a imagem com nenhum roteiro, script ou prompt. NÃO verifique se a arte corresponde ao que foi planejado. "
-        f"Analise SOMENTE o que está desenhado na imagem.\n"
+        f"NÃO compare a imagem com nenhum roteiro, script, prompt ou versão anterior. NÃO verifique se a arte corresponde ao que foi planejado ou escrito. "
+        f"NÃO sinalize diferenças entre o texto visível na imagem e qualquer texto de roteiro. "
+        f"Analise SOMENTE o que está desenhado na imagem — julgue a obra por si mesma.\n"
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
@@ -1932,12 +1939,14 @@ def _especialista_roteiro_fallback_claude(
 ) -> dict:
     roteiro_str = json.dumps(roteiro, ensure_ascii=False, indent=2)
     prompt_text = (
-        f"Conto Taoísta Original:\n{conto}\n\n"
-        f"Roteiro de HQ Estruturado:\n{roteiro_str}\n\n"
+        f"Contexto da obra de origem (apenas para identificar o autor e a tradição filosófica de referência):\n{conto}\n\n"
+        f"Roteiro de HQ a ser analisado:\n{roteiro_str}\n\n"
         f"Instruções:\n"
-        f"1. Analise se a tradução e adaptação do conto mantêm a essência filosófica do autor original ou do taoísmo clássico.\n"
-        f"2. Avalie o roteiro da HQ (título, narrativas, falas, número de páginas e de quadrinhos).\n"
-        f"3. Responda seguindo estritamente a estrutura do seu formato de revisão:\n"
+        f"1. Analise o roteiro como obra independente — verifique se possui coerência taoísta interna, tomando como única referência a filosofia e o estilo do autor da obra de origem.\n"
+        f"2. NÃO compare o roteiro com o conto original. NÃO verifique se o roteiro segue o enredo original. Analise apenas se o roteiro, por si mesmo, é filosoficamente coerente com a visão do autor.\n"
+        f"3. Verifique se há caracteres ou termos em mandarim e se estão corretos.\n"
+        f"4. Sugira melhorias nas falas e narrações para que ressoem melhor com o autor da obra de origem.\n"
+        f"5. Responda seguindo estritamente a estrutura do seu formato de revisão:\n"
         f"## RESULTADO GERAL\n"
         f"### [Resultado]\n\n"
         f"## ANÁLISE\n"
@@ -1953,10 +1962,10 @@ def _especialista_roteiro_fallback_claude(
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
     if especifica:
         prompt_text += f"\n\nInstrução Específica (Prioridade Máxima):\n{especifica}\n"
-        
+
     response = ant_client.messages.create(
         model="claude-3-5-sonnet-latest",
-        max_tokens=1024,
+        max_tokens=4096,
         messages=[
             {"role": "user", "content": prompt_text}
         ]
@@ -2175,8 +2184,9 @@ def _especialista_pagina_fallback_claude(
         f"1. Leitura taoísta da arte: os elementos visuais (natureza, névoa, luz, símbolos, gestos) evocam corretamente a filosofia taoísta?\n"
         f"2. Caracteres e ideogramas chineses visíveis na arte: estão graficamente corretos, legíveis e conceitualmente adequados?\n"
         f"3. Qualidade filosófica dos diálogos visíveis: as falas e narrações refletem adequadamente os princípios taoístas do autor da obra?\n\n"
-        f"NÃO compare a imagem com nenhum roteiro, script ou prompt. NÃO verifique se a arte corresponde ao que foi planejado. "
-        f"Analise SOMENTE o que está desenhado na imagem.\n"
+        f"NÃO compare a imagem com nenhum roteiro, script, prompt ou versão anterior. NÃO verifique se a arte corresponde ao que foi planejado ou escrito. "
+        f"NÃO sinalize diferenças entre o texto visível na imagem e qualquer texto de roteiro. "
+        f"Analise SOMENTE o que está desenhado na imagem — julgue a obra por si mesma.\n"
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
@@ -2352,12 +2362,16 @@ def processar_conto_taoista(
     os.makedirs(tale_dir, exist_ok=True)
     
     # Subpastas dedicadas conforme novas diretrizes do usuário
+    roteirista_dir = os.path.join(tale_dir, "roteirista")
+    designer_dir = os.path.join(tale_dir, "designer")
     revisor_dir = os.path.join(tale_dir, "revisor")
     especialista_dir = os.path.join(tale_dir, "especialista")
     artista_dir = os.path.join(tale_dir, "artista")
     aprovadas_dir = os.path.join(artista_dir, "aprovadas")
     rejeitadas_dir = os.path.join(artista_dir, "rejeitadas")
-    
+
+    os.makedirs(roteirista_dir, exist_ok=True)
+    os.makedirs(designer_dir, exist_ok=True)
     os.makedirs(revisor_dir, exist_ok=True)
     os.makedirs(especialista_dir, exist_ok=True)
     os.makedirs(artista_dir, exist_ok=True)
@@ -2376,6 +2390,10 @@ def processar_conto_taoista(
                     shutil.move(src_path, os.path.join(especialista_dir, f_name))
                 elif f_name.startswith("pagina_") and f_name.endswith(".png"):
                     shutil.move(src_path, os.path.join(aprovadas_dir, f_name))
+                elif f_name.startswith("roteiro") and f_name.endswith(".json"):
+                    shutil.move(src_path, os.path.join(roteirista_dir, f_name))
+                elif f_name.startswith("prompt_pagina_") and f_name.endswith(".txt"):
+                    shutil.move(src_path, os.path.join(designer_dir, f_name))
                     
         old_rejeitadas = os.path.join(tale_dir, "rejeitadas")
         if os.path.isdir(old_rejeitadas):
@@ -2391,7 +2409,7 @@ def processar_conto_taoista(
         print(f"Erro na migração de retrocompatibilidade: {e_migra}")
     
     # Caminho do roteiro na pasta
-    roteiro_path = os.path.join(tale_dir, "roteiro.json")
+    roteiro_path = os.path.join(roteirista_dir, "roteiro.json")
     roteiro = None
     roteiro_cacheado = False
     
@@ -2447,7 +2465,7 @@ def processar_conto_taoista(
     
     titulo = roteiro.get("titulo", "Conto Taoista")
     paginas = roteiro.get("paginas", [])
-    total_paginas = roteiro.get("total_paginas") or len(paginas)
+    total_paginas = len(paginas)
     
     sse_send(f"[Sistema] Roteiro pronto: '{titulo}' | Total de páginas: {total_paginas}")
     
@@ -2566,10 +2584,10 @@ def processar_conto_taoista(
                 # Atualiza variáveis locais
                 titulo = roteiro.get("titulo", "Conto Taoista")
                 paginas = roteiro.get("paginas", [])
-                total_paginas = roteiro.get("total_paginas") or len(paginas)
+                total_paginas = len(paginas)
                 
                 # Salva o roteiro final/atualizado na pasta do conto
-                roteiro_cache_path = os.path.join(tale_dir, "roteiro.json")
+                roteiro_cache_path = os.path.join(roteirista_dir, "roteiro.json")
                 with open(roteiro_cache_path, "w", encoding="utf-8") as f:
                     json.dump(roteiro, f, ensure_ascii=False, indent=2)
                 _drive_upload(roteiro_cache_path)
@@ -2588,7 +2606,7 @@ def processar_conto_taoista(
         sse_send(f"[Sistema] === INICIANDO PROCESSAMENTO DA PÁGINA {i} de {total_paginas} ===")
         
         # Caminho do prompt do designer para a página
-        prompt_path = os.path.join(tale_dir, f"prompt_pagina_{i}.txt")
+        prompt_path = os.path.join(designer_dir, f"prompt_pagina_{i}.txt")
         prompt_designer = None
         
         if os.path.exists(prompt_path):

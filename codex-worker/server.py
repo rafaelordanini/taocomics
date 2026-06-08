@@ -37,7 +37,7 @@ def generate_image(req: GenerateRequest, authorization: str = Header(default="")
 
     before = {fp for fp, _ in _list_images()}
 
-    prompt_truncado = req.prompt[:800]
+    prompt_truncado = req.prompt[:4000]
     full_prompt = f"Generate an image: {prompt_truncado}. Image size 1024x1536."
 
     cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", full_prompt, "--skip-git-repo-check"]
@@ -48,10 +48,10 @@ def generate_image(req: GenerateRequest, authorization: str = Header(default="")
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=3600
+            timeout=300
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Codex timeout")
+        raise HTTPException(status_code=504, detail="Codex timeout após 5 minutos")
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail=f"Codex binary not found at {CODEX_BIN}")
 
