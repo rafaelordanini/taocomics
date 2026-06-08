@@ -12,7 +12,7 @@ sys.path.insert(0, "/app")
 from app.drive_upload import upload_image_to_drive, _get_drive_service
 from googleapiclient.http import MediaFileUpload
 
-SAVED_COMICS_DIR = "/data/saved_comics"
+SAVED_COMICS_DIR = "/app/app/static/saved_comics"
 
 def upload_all():
     if not os.path.exists(SAVED_COMICS_DIR):
