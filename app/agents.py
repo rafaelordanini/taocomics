@@ -391,8 +391,8 @@ def _drive_upload(path: str):
     try:
         from app.drive_upload import upload_file_to_drive
         upload_file_to_drive(path)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"[drive_upload] Falha ao enviar {path}: {e}")
 
 
 def _run_codex_text(prompt: str) -> str:
@@ -2657,8 +2657,8 @@ def processar_conto_taoista(
                 try:
                     from app.drive_upload import upload_image_to_drive
                     upload_image_to_drive(filepath)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.warning(f"[drive_upload] Falha ao enviar imagem do cache {filepath}: {e}")
                 sse_send(f"[Sistema] Página {i} carregada com sucesso do cache e copiada para '{filepath}'")
                 paginas_salvas.append(filename)
                 revisao_aprovada = True
@@ -3032,8 +3032,8 @@ def processar_conto_taoista(
                 try:
                     from app.drive_upload import upload_image_to_drive
                     upload_image_to_drive(filepath)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.warning(f"[drive_upload] Falha ao enviar imagem {filepath}: {e}")
                 sse_send(f"[Sistema] Página {i} salva em '{filepath}' e copiada para a pasta do conto.")
                 paginas_salvas.append(filename)
                 _registrar_modelo_utilizado(tale_dir, filename, "aprovada", model_used)
@@ -3220,8 +3220,8 @@ def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict
     try:
         from app.drive_upload import upload_image_to_drive
         upload_image_to_drive(filepath)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"[drive_upload] Falha ao enviar imagem {filepath}: {e}")
     _registrar_modelo_utilizado(tale_dir, filename, "aprovada", model_used)
     return True
 
