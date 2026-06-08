@@ -40,7 +40,9 @@ def _resolve_saved_comics_dir() -> str:
     raise RuntimeError("Nenhum diretório gravável encontrado para saved_comics")
 
 os.makedirs(STATIC_DIR, exist_ok=True)
-SAVED_COMICS_DIR = _resolve_saved_comics_dir()
+
+def get_saved_comics_dir() -> str:
+    return _resolve_saved_comics_dir()
 
 
 class SessionState:
@@ -294,7 +296,7 @@ async def generate_comic(request: Request):
         try:
             processar_conto_taoista(
                 conto=conto,
-                output_dir=SAVED_COMICS_DIR,
+                output_dir=get_saved_comics_dir(),
                 sse_send=sse_send,
                 custom_keys=custom_keys,
                 ref_image=ref_image,
@@ -334,7 +336,7 @@ async def generate_comic(request: Request):
 @app.get("/api/comics")
 async def list_comics():
     try:
-        files = os.listdir(SAVED_COMICS_DIR)
+        files = os.listdir(get_saved_comics_dir())
         images = [f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         images.sort()
         return {"images": images}
@@ -382,7 +384,7 @@ async def edit_page(req: EditPageRequest):
 
 @app.get("/saved_comics/{filename}")
 async def serve_saved_comic(filename: str):
-    filepath = os.path.join(SAVED_COMICS_DIR, filename)
+    filepath = os.path.join(get_saved_comics_dir(), filename)
     if not os.path.exists(filepath):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
