@@ -1,9 +1,12 @@
 import os
 import logging
 import mimetypes
+from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_last_token_check: datetime | None = None
 
 _folder_cache: dict[str, str] = {}
 
@@ -29,6 +32,25 @@ def _get_drive_service():
         scopes=["https://www.googleapis.com/auth/drive"],
     )
     creds.refresh(Request())
+
+    # Verifica validade do token e alerta se próximo de expirar
+    global _last_token_check
+    now = datetime.now(timezone.utc)
+    if _last_token_check is None or (now - _last_token_check).total_seconds() > 3600:
+        _last_token_check = now
+        if creds.expiry:
+            remaining = (creds.expiry.replace(tzinfo=timezone.utc) - now).total_seconds()
+            if remaining < 600:
+                logger.warning(
+                    f"[drive] ⚠️ Access token expira em {int(remaining)}s. "
+                    "Se uploads pararem, renove o GOOGLE_OAUTH_REFRESH_TOKEN no Railway."
+                )
+        if not creds.valid:
+            logger.warning(
+                "[drive] ⚠️ Credenciais Google inválidas. "
+                "Renove o GOOGLE_OAUTH_REFRESH_TOKEN no Railway via OAuth Playground."
+            )
+
     return build("drive", "v3", credentials=creds)
 
 
