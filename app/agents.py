@@ -481,7 +481,7 @@ def _executar_agente_texto_visao(
             temp_img_path = os.path.expanduser(f"~/.codex/temp_vision_{int(time.time())}.png")
             image.save(temp_img_path)
             
-        MAX_CODEX_PROMPT = 800
+        MAX_CODEX_PROMPT = 8000
         prompt_codex = prompt[:MAX_CODEX_PROMPT] if len(prompt) > MAX_CODEX_PROMPT else prompt
 
         full_prompt = ""
