@@ -2605,6 +2605,11 @@ def processar_conto_taoista(
                 sse_send(f"[Sistema] Imagem final da página {i} encontrada localmente! Carregando do cache...")
                 imagem_final = Image.open(image_path_in_tale)
                 imagem_final.save(filepath)
+                try:
+                    from app.drive_upload import upload_image_to_drive
+                    upload_image_to_drive(filepath)
+                except Exception:
+                    pass
                 sse_send(f"[Sistema] Página {i} carregada com sucesso do cache e copiada para '{filepath}'")
                 paginas_salvas.append(filename)
                 revisao_aprovada = True
@@ -2970,6 +2975,11 @@ def processar_conto_taoista(
             try:
                 imagem_final.save(image_path_in_tale)
                 imagem_final.save(filepath)
+                try:
+                    from app.drive_upload import upload_image_to_drive
+                    upload_image_to_drive(filepath)
+                except Exception:
+                    pass
                 sse_send(f"[Sistema] Página {i} salva em '{filepath}' e copiada para a pasta do conto.")
                 paginas_salvas.append(filename)
                 _registrar_modelo_utilizado(tale_dir, filename, "aprovada", model_used)
@@ -3153,6 +3163,11 @@ def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict
     
     imagem_final.save(image_path_in_tale)
     imagem_final.save(filepath)
+    try:
+        from app.drive_upload import upload_image_to_drive
+        upload_image_to_drive(filepath)
+    except Exception:
+        pass
     _registrar_modelo_utilizado(tale_dir, filename, "aprovada", model_used)
     return True
 
