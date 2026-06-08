@@ -23,7 +23,7 @@ app.add_middleware(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 # /tmp é gravável em Railway e outros ambientes com filesystem somente-leitura
-SAVED_COMICS_DIR = os.path.join("/tmp", "saved_comics")
+SAVED_COMICS_DIR = os.path.join("/data", "saved_comics")
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(SAVED_COMICS_DIR, exist_ok=True)
