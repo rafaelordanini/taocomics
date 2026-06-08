@@ -2,6 +2,9 @@ import os
 import io
 import time
 import json
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 def _get_saved_comics_dir() -> str:
@@ -925,6 +928,7 @@ def _designer_fallback(
 def _generar_imagem_codex(prompt: str, modelos_paths: list = None) -> dict:
     worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
     worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
+    logging.info(f"[codex-worker] CODEX_WORKER_URL={worker_url!r}")
 
     if not worker_url:
         raise RuntimeError(
