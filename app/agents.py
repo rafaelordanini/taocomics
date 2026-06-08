@@ -1668,12 +1668,14 @@ def _especialista_roteiro_primary(
 ) -> dict:
     roteiro_str = json.dumps(roteiro, ensure_ascii=False, indent=2)
     prompt_text = (
-        f"Conto Taoísta Original:\n{conto}\n\n"
-        f"Roteiro de HQ Estruturado:\n{roteiro_str}\n\n"
+        f"Contexto da obra de origem (apenas para identificar o autor e a tradição filosófica de referência):\n{conto}\n\n"
+        f"Roteiro de HQ a ser analisado:\n{roteiro_str}\n\n"
         f"Instruções:\n"
-        f"1. Analise se a tradução e adaptação do conto mantêm a essência filosófica do autor original ou do taoísmo clássico.\n"
-        f"2. Avalie o roteiro da HQ (título, narrativas, falas, número de páginas e de quadrinhos).\n"
-        f"3. Responda seguindo estritamente a estrutura do seu formato de revisão:\n"
+        f"1. Analise o roteiro como obra independente — verifique se possui coerência taoísta interna, tomando como única referência a filosofia e o estilo do autor da obra de origem.\n"
+        f"2. NÃO compare o roteiro com o conto original. NÃO verifique se o roteiro segue o enredo original. Analise apenas se o roteiro, por si mesmo, é filosoficamente coerente com a visão do autor.\n"
+        f"3. Verifique se há caracteres ou termos em mandarim e se estão corretos.\n"
+        f"4. Sugira melhorias nas falas e narrações para que ressoem melhor com o autor da obra de origem.\n"
+        f"5. Responda seguindo estritamente a estrutura do seu formato de revisão:\n"
         f"## RESULTADO GERAL\n"
         f"### [Resultado]\n\n"
         f"## ANÁLISE\n"
@@ -1685,13 +1687,13 @@ def _especialista_roteiro_primary(
         f"## DECISÃO FINAL\n"
         f"[Escolha uma opção de decisão final]"
     )
-    
+
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
     if especifica:
         prompt_text += f"\n\nInstrução Específica (Prioridade Máxima):\n{especifica}\n"
-        
-    system_instruction = "Você é o Especialista China. Analise o conto e o roteiro quanto à essência taoísta e traduções."
+
+    system_instruction = "Você é o Especialista China. Analise o roteiro como obra independente quanto à coerência taoísta interna e caracteres mandarins. Nunca compare com o conto ou roteiro original."
     
     def native_fallback():
         contents = []
@@ -1738,25 +1740,27 @@ def _especialista_roteiro_fallback(
 ) -> dict:
     roteiro_str = json.dumps(roteiro, ensure_ascii=False, indent=2)
     prompt_text = (
-        f"Conto Taoísta Original:\n{conto}\n\n"
-        f"Roteiro de HQ Estruturado:\n{roteiro_str}\n\n"
+        f"Contexto da obra de origem (apenas para identificar o autor e a tradição filosófica de referência):\n{conto}\n\n"
+        f"Roteiro de HQ a ser analisado:\n{roteiro_str}\n\n"
         f"Instruções:\n"
-        f"1. Analise se a tradução e adaptação do conto mantêm a essência filosófica do autor original ou do taoísmo clássico.\n"
-        f"2. Avalie o roteiro da HQ (título, narrativas, falas, número de páginas e de quadrinhos).\n"
-        f"3. Responda seguindo estritamente a estrutura do seu formato de revisão."
+        f"1. Analise o roteiro como obra independente — verifique se possui coerência taoísta interna, tomando como única referência a filosofia e o estilo do autor da obra de origem.\n"
+        f"2. NÃO compare o roteiro com o conto original. NÃO verifique se o roteiro segue o enredo original. Analise apenas se o roteiro, por si mesmo, é filosoficamente coerente com a visão do autor.\n"
+        f"3. Verifique se há caracteres ou termos em mandarim e se estão corretos.\n"
+        f"4. Sugira melhorias nas falas e narrações para que ressoem melhor com o autor da obra de origem.\n"
+        f"5. Responda seguindo estritamente a estrutura do seu formato de revisão."
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
     if especifica:
         prompt_text += f"\n\nInstrução Específica (Prioridade Máxima):\n{especifica}\n"
-        
+
     attachments = []
     if arquivo_b64 and arquivo_mime:
         attachments.append((arquivo_b64, arquivo_mime))
-        
+
     messages = _format_openrouter_payload(
         prompt=prompt_text,
-        system_instruction="Você é o Especialista China. Analise o conto e o roteiro quanto à essência taoísta e traduções.",
+        system_instruction="Você é o Especialista China. Analise o roteiro como obra independente quanto à coerência taoísta interna e caracteres mandarins. Nunca compare com o conto ou roteiro original.",
         attachments=attachments
     )
 
