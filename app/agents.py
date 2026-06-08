@@ -2352,12 +2352,16 @@ def processar_conto_taoista(
     os.makedirs(tale_dir, exist_ok=True)
     
     # Subpastas dedicadas conforme novas diretrizes do usuário
+    roteirista_dir = os.path.join(tale_dir, "roteirista")
+    designer_dir = os.path.join(tale_dir, "designer")
     revisor_dir = os.path.join(tale_dir, "revisor")
     especialista_dir = os.path.join(tale_dir, "especialista")
     artista_dir = os.path.join(tale_dir, "artista")
     aprovadas_dir = os.path.join(artista_dir, "aprovadas")
     rejeitadas_dir = os.path.join(artista_dir, "rejeitadas")
-    
+
+    os.makedirs(roteirista_dir, exist_ok=True)
+    os.makedirs(designer_dir, exist_ok=True)
     os.makedirs(revisor_dir, exist_ok=True)
     os.makedirs(especialista_dir, exist_ok=True)
     os.makedirs(artista_dir, exist_ok=True)
@@ -2376,6 +2380,10 @@ def processar_conto_taoista(
                     shutil.move(src_path, os.path.join(especialista_dir, f_name))
                 elif f_name.startswith("pagina_") and f_name.endswith(".png"):
                     shutil.move(src_path, os.path.join(aprovadas_dir, f_name))
+                elif f_name.startswith("roteiro") and f_name.endswith(".json"):
+                    shutil.move(src_path, os.path.join(roteirista_dir, f_name))
+                elif f_name.startswith("prompt_pagina_") and f_name.endswith(".txt"):
+                    shutil.move(src_path, os.path.join(designer_dir, f_name))
                     
         old_rejeitadas = os.path.join(tale_dir, "rejeitadas")
         if os.path.isdir(old_rejeitadas):
@@ -2391,7 +2399,7 @@ def processar_conto_taoista(
         print(f"Erro na migração de retrocompatibilidade: {e_migra}")
     
     # Caminho do roteiro na pasta
-    roteiro_path = os.path.join(tale_dir, "roteiro.json")
+    roteiro_path = os.path.join(roteirista_dir, "roteiro.json")
     roteiro = None
     roteiro_cacheado = False
     
@@ -2447,7 +2455,7 @@ def processar_conto_taoista(
     
     titulo = roteiro.get("titulo", "Conto Taoista")
     paginas = roteiro.get("paginas", [])
-    total_paginas = roteiro.get("total_paginas") or len(paginas)
+    total_paginas = len(paginas)
     
     sse_send(f"[Sistema] Roteiro pronto: '{titulo}' | Total de páginas: {total_paginas}")
     
@@ -2566,10 +2574,10 @@ def processar_conto_taoista(
                 # Atualiza variáveis locais
                 titulo = roteiro.get("titulo", "Conto Taoista")
                 paginas = roteiro.get("paginas", [])
-                total_paginas = roteiro.get("total_paginas") or len(paginas)
+                total_paginas = len(paginas)
                 
                 # Salva o roteiro final/atualizado na pasta do conto
-                roteiro_cache_path = os.path.join(tale_dir, "roteiro.json")
+                roteiro_cache_path = os.path.join(roteirista_dir, "roteiro.json")
                 with open(roteiro_cache_path, "w", encoding="utf-8") as f:
                     json.dump(roteiro, f, ensure_ascii=False, indent=2)
                 _drive_upload(roteiro_cache_path)
@@ -2588,7 +2596,7 @@ def processar_conto_taoista(
         sse_send(f"[Sistema] === INICIANDO PROCESSAMENTO DA PÁGINA {i} de {total_paginas} ===")
         
         # Caminho do prompt do designer para a página
-        prompt_path = os.path.join(tale_dir, f"prompt_pagina_{i}.txt")
+        prompt_path = os.path.join(designer_dir, f"prompt_pagina_{i}.txt")
         prompt_designer = None
         
         if os.path.exists(prompt_path):
