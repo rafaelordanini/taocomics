@@ -3,7 +3,7 @@ import queue
 import threading
 from pydantic import BaseModel
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execute_page_edit
@@ -19,10 +19,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cria os diretórios necessários dentro de app/static
+# Cria os diretórios necessários
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-SAVED_COMICS_DIR = os.path.join(STATIC_DIR, "saved_comics")
+# /tmp é gravável em Railway e outros ambientes com filesystem somente-leitura
+SAVED_COMICS_DIR = os.path.join("/data", "saved_comics")
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(SAVED_COMICS_DIR, exist_ok=True)
@@ -363,6 +364,15 @@ async def edit_page(req: EditPageRequest):
             return {"error": "Falha ao editar a página."}
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/saved_comics/{filename}")
+async def serve_saved_comic(filename: str):
+    filepath = os.path.join(SAVED_COMICS_DIR, filename)
+    if not os.path.exists(filepath):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return FileResponse(filepath)
 
 
 # Servir os arquivos estáticos (HTML, CSS, JS e imagens geradas)

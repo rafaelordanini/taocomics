@@ -2997,10 +2997,8 @@ def find_tale_dir_by_filename(filename: str) -> str:
         return None
     title_prefix = parts[0].lower()
     
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    static_dir = os.path.join(base_dir, "static")
-    saved_comics_dir = os.path.join(static_dir, "saved_comics")
-    
+    saved_comics_dir = os.path.join("/data", "saved_comics")
+
     if not os.path.exists(saved_comics_dir):
         return None
         
@@ -3144,9 +3142,8 @@ def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict
     if os.path.exists(image_path_in_tale):
         _salvar_imagem_rejeitada(image_path_in_tale, tale_dir, page_num, "substituida_edicao", model_id=model_used)
         
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    static_dir = os.path.join(base_dir, "static")
-    saved_comics_dir = os.path.join(static_dir, "saved_comics")
+    saved_comics_dir = os.path.join("/data", "saved_comics")
+    os.makedirs(saved_comics_dir, exist_ok=True)
     filepath = os.path.join(saved_comics_dir, filename)
     
     imagem_final.save(image_path_in_tale)
