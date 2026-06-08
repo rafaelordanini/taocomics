@@ -11,7 +11,14 @@ pkill -f "uvicorn server:app" 2>/dev/null || true
 sleep 2
 
 echo "Baixando server.py atualizado..."
-curl -fsSL "https://raw.githubusercontent.com/rafaelordanini/taocomics/main/codex-worker/server.py" -o "$WORKER_DIR/server.py"
+if [ -z "$GITHUB_TOKEN" ]; then
+    echo "⚠️  GITHUB_TOKEN não definido. Pulando atualização do server.py (usando versão atual)."
+else
+    curl -fsSL -H "Authorization: token $GITHUB_TOKEN" \
+        "https://raw.githubusercontent.com/rafaelordanini/taocomics/main/codex-worker/server.py" \
+        -o "$WORKER_DIR/server.py"
+    echo "✓ server.py atualizado."
+fi
 
 echo "Iniciando servidor..."
 cd "$WORKER_DIR"
