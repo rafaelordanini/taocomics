@@ -2,6 +2,21 @@ import os
 import io
 import time
 import json
+
+
+def _get_saved_comics_dir() -> str:
+    for base in ("/data", "/tmp"):
+        try:
+            path = os.path.join(base, "saved_comics")
+            os.makedirs(path, exist_ok=True)
+            test = os.path.join(path, ".write_test")
+            with open(test, "w") as f:
+                f.write("ok")
+            os.remove(test)
+            return path
+        except OSError:
+            continue
+    raise RuntimeError("Nenhum diretório gravável encontrado para saved_comics")
 import base64
 import httpx
 from PIL import Image
@@ -2997,7 +3012,7 @@ def find_tale_dir_by_filename(filename: str) -> str:
         return None
     title_prefix = parts[0].lower()
     
-    saved_comics_dir = os.path.join("/data", "saved_comics")
+    saved_comics_dir = _get_saved_comics_dir()
 
     if not os.path.exists(saved_comics_dir):
         return None
@@ -3142,7 +3157,7 @@ def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict
     if os.path.exists(image_path_in_tale):
         _salvar_imagem_rejeitada(image_path_in_tale, tale_dir, page_num, "substituida_edicao", model_id=model_used)
         
-    saved_comics_dir = os.path.join("/data", "saved_comics")
+    saved_comics_dir = _get_saved_comics_dir()
     os.makedirs(saved_comics_dir, exist_ok=True)
     filepath = os.path.join(saved_comics_dir, filename)
     

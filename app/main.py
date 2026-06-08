@@ -22,11 +22,25 @@ app.add_middleware(
 # Cria os diretórios necessários
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-# /tmp é gravável em Railway e outros ambientes com filesystem somente-leitura
-SAVED_COMICS_DIR = os.path.join("/data", "saved_comics")
+
+# Usa /data (volume Railway) se disponível, senão cai para /tmp
+def _resolve_saved_comics_dir() -> str:
+    for base in ("/data", "/tmp"):
+        try:
+            path = os.path.join(base, "saved_comics")
+            os.makedirs(path, exist_ok=True)
+            # Testa escrita
+            test = os.path.join(path, ".write_test")
+            with open(test, "w") as f:
+                f.write("ok")
+            os.remove(test)
+            return path
+        except OSError:
+            continue
+    raise RuntimeError("Nenhum diretório gravável encontrado para saved_comics")
 
 os.makedirs(STATIC_DIR, exist_ok=True)
-os.makedirs(SAVED_COMICS_DIR, exist_ok=True)
+SAVED_COMICS_DIR = _resolve_saved_comics_dir()
 
 
 class SessionState:
