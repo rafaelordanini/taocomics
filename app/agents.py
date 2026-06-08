@@ -1815,8 +1815,9 @@ def _especialista_pagina_primary(
         f"1. Leitura taoísta da arte: os elementos visuais (natureza, névoa, luz, símbolos, gestos) evocam corretamente a filosofia taoísta?\n"
         f"2. Caracteres e ideogramas chineses visíveis na arte: estão graficamente corretos, legíveis e conceitualmente adequados?\n"
         f"3. Qualidade filosófica dos diálogos visíveis: as falas e narrações refletem adequadamente os princípios taoístas do autor da obra?\n\n"
-        f"NÃO compare a imagem com nenhum roteiro, script ou prompt. NÃO verifique se a arte corresponde ao que foi planejado. "
-        f"Analise SOMENTE o que está desenhado na imagem.\n"
+        f"NÃO compare a imagem com nenhum roteiro, script, prompt ou versão anterior. NÃO verifique se a arte corresponde ao que foi planejado ou escrito. "
+        f"NÃO sinalize diferenças entre o texto visível na imagem e qualquer texto de roteiro. "
+        f"Analise SOMENTE o que está desenhado na imagem — julgue a obra por si mesma.\n"
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
@@ -1879,8 +1880,9 @@ def _especialista_pagina_fallback(
         f"1. Leitura taoísta da arte: os elementos visuais (natureza, névoa, luz, símbolos, gestos) evocam corretamente a filosofia taoísta?\n"
         f"2. Caracteres e ideogramas chineses visíveis na arte: estão graficamente corretos, legíveis e conceitualmente adequados?\n"
         f"3. Qualidade filosófica dos diálogos visíveis: as falas e narrações refletem adequadamente os princípios taoístas do autor da obra?\n\n"
-        f"NÃO compare a imagem com nenhum roteiro, script ou prompt. NÃO verifique se a arte corresponde ao que foi planejado. "
-        f"Analise SOMENTE o que está desenhado na imagem.\n"
+        f"NÃO compare a imagem com nenhum roteiro, script, prompt ou versão anterior. NÃO verifique se a arte corresponde ao que foi planejado ou escrito. "
+        f"NÃO sinalize diferenças entre o texto visível na imagem e qualquer texto de roteiro. "
+        f"Analise SOMENTE o que está desenhado na imagem — julgue a obra por si mesma.\n"
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
@@ -1937,12 +1939,14 @@ def _especialista_roteiro_fallback_claude(
 ) -> dict:
     roteiro_str = json.dumps(roteiro, ensure_ascii=False, indent=2)
     prompt_text = (
-        f"Conto Taoísta Original:\n{conto}\n\n"
-        f"Roteiro de HQ Estruturado:\n{roteiro_str}\n\n"
+        f"Contexto da obra de origem (apenas para identificar o autor e a tradição filosófica de referência):\n{conto}\n\n"
+        f"Roteiro de HQ a ser analisado:\n{roteiro_str}\n\n"
         f"Instruções:\n"
-        f"1. Analise se a tradução e adaptação do conto mantêm a essência filosófica do autor original ou do taoísmo clássico.\n"
-        f"2. Avalie o roteiro da HQ (título, narrativas, falas, número de páginas e de quadrinhos).\n"
-        f"3. Responda seguindo estritamente a estrutura do seu formato de revisão:\n"
+        f"1. Analise o roteiro como obra independente — verifique se possui coerência taoísta interna, tomando como única referência a filosofia e o estilo do autor da obra de origem.\n"
+        f"2. NÃO compare o roteiro com o conto original. NÃO verifique se o roteiro segue o enredo original. Analise apenas se o roteiro, por si mesmo, é filosoficamente coerente com a visão do autor.\n"
+        f"3. Verifique se há caracteres ou termos em mandarim e se estão corretos.\n"
+        f"4. Sugira melhorias nas falas e narrações para que ressoem melhor com o autor da obra de origem.\n"
+        f"5. Responda seguindo estritamente a estrutura do seu formato de revisão:\n"
         f"## RESULTADO GERAL\n"
         f"### [Resultado]\n\n"
         f"## ANÁLISE\n"
@@ -1958,10 +1962,10 @@ def _especialista_roteiro_fallback_claude(
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
     if especifica:
         prompt_text += f"\n\nInstrução Específica (Prioridade Máxima):\n{especifica}\n"
-        
+
     response = ant_client.messages.create(
         model="claude-3-5-sonnet-latest",
-        max_tokens=1024,
+        max_tokens=4096,
         messages=[
             {"role": "user", "content": prompt_text}
         ]
@@ -2180,8 +2184,9 @@ def _especialista_pagina_fallback_claude(
         f"1. Leitura taoísta da arte: os elementos visuais (natureza, névoa, luz, símbolos, gestos) evocam corretamente a filosofia taoísta?\n"
         f"2. Caracteres e ideogramas chineses visíveis na arte: estão graficamente corretos, legíveis e conceitualmente adequados?\n"
         f"3. Qualidade filosófica dos diálogos visíveis: as falas e narrações refletem adequadamente os princípios taoístas do autor da obra?\n\n"
-        f"NÃO compare a imagem com nenhum roteiro, script ou prompt. NÃO verifique se a arte corresponde ao que foi planejado. "
-        f"Analise SOMENTE o que está desenhado na imagem.\n"
+        f"NÃO compare a imagem com nenhum roteiro, script, prompt ou versão anterior. NÃO verifique se a arte corresponde ao que foi planejado ou escrito. "
+        f"NÃO sinalize diferenças entre o texto visível na imagem e qualquer texto de roteiro. "
+        f"Analise SOMENTE o que está desenhado na imagem — julgue a obra por si mesma.\n"
     )
     if geral:
         prompt_text += f"\n\nDiretrizes Gerais do Especialista:\n{geral}\n"
