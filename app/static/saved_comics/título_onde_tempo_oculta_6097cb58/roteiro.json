@@ -1,0 +1,307 @@
+{
+  "titulo": "Onde o Tempo se Oculta",
+  "formato": {
+    "paginas": 4,
+    "quadrinhos_por_pagina": 8,
+    "idioma": "portugues"
+  },
+  "paginas": [
+    {
+      "pagina": 1,
+      "quadrinhos": [
+        {
+          "quadrinho": 1,
+          "cena": "Plano amplo de um vale chinês antigo ao amanhecer, com montanhas cobertas por névoa, bambuzal e um pavilhão simples de madeira. Yu Xiong está sentado sobre uma esteira, diante de poucos discípulos em silêncio.",
+          "narracao": "Nas montanhas, Yu Xiong observava o movimento que não se deixa prender pelo olhar.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 2,
+          "cena": "Close em Yu Xiong, ancião sereno de barba longa, com o rosto iluminado pela luz fria da manhã. Folhas de bambu se movem atrás dele sem que ninguém as toque.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "O movimento da natureza é incessante."
+            }
+          ]
+        },
+        {
+          "quadrinho": 3,
+          "cena": "O céu muda discretamente sobre as montanhas: nuvens passam, aves cruzam ao longe e a claridade se desloca sobre os cumes. Tudo parece imóvel à primeira vista, embora nada permaneça igual.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "É como o movimento secreto do Céu e da Terra."
+            }
+          ]
+        },
+        {
+          "quadrinho": 4,
+          "cena": "Um discípulo jovem ergue os olhos, tentando perceber no ar o instante da mudança. A névoa desliza entre pinheiros e rochas sem formar uma linha clara.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Quem é capaz de percebê-lo?"
+            }
+          ]
+        },
+        {
+          "quadrinho": 5,
+          "cena": "Detalhe de um broto nascendo entre pedras úmidas, ao lado de uma folha seca já quebradiça. A vida nova e a decadência dividem o mesmo pequeno espaço.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Assim, todos os seres ora decaem, ora crescem."
+            }
+          ]
+        },
+        {
+          "quadrinho": 6,
+          "cena": "Uma árvore antiga ocupa o quadro: de um lado, flores abertas; do outro, galhos secos e casca rachada. Pequenos pássaros pousam entre as partes vivas e gastas do tronco.",
+          "narracao": "Nenhum ser permanece preso a um único estado.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 7,
+          "cena": "Sobre a água calma de um lago, uma flor de lótus plenamente aberta aparece ao lado de outra ainda fechada. O reflexo das duas se desfaz em ondulações leves.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Ora atingem a completude, ora permanecem na deficiência."
+            }
+          ]
+        },
+        {
+          "quadrinho": 8,
+          "cena": "Yu Xiong aponta para a paisagem, enquanto os discípulos permanecem imóveis. O vento move as mangas das túnicas, os bambus e a superfície do lago.",
+          "narracao": "O mestre não explicava o movimento; apontava para aquilo que se transforma sem anunciar-se.",
+          "dialogos": []
+        }
+      ]
+    },
+    {
+      "pagina": 2,
+      "quadrinhos": [
+        {
+          "quadrinho": 1,
+          "cena": "A lua aparece em sequência sutil sobre telhados curvos de um templo: fina, crescente, cheia e já começando a minguar. As fases dividem o mesmo céu silencioso.",
+          "narracao": "",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 2,
+          "cena": "Close em uma tigela de cerâmica cheia de água sobre uma mesa baixa. Uma gota cai, e o primeiro círculo da onda começa a se abrir.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Crescimento e decadência, completude e deficiência são fenômenos que se manifestam..."
+            }
+          ]
+        },
+        {
+          "quadrinho": 3,
+          "cena": "A onda na tigela se desfaz até quase desaparecer. O reflexo de Yu Xiong surge por um instante na água novamente lisa.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "...e, ao mesmo tempo, desaparecem."
+            }
+          ]
+        },
+        {
+          "quadrinho": 4,
+          "cena": "Um discípulo observa uma folha prestes a cair de um galho. No instante seguinte, ela já está no ar, fora do ponto em que ele tentava fixá-la.",
+          "narracao": "",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 5,
+          "cena": "Yu Xiong segura uma folha entre os dedos, metade verde e metade amarelada. Seu rosto permanece calmo, sem tristeza e sem celebração.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Sendo imperceptível o intervalo entre a sua chegada e o seu retorno, quem será capaz de percebê-lo?"
+            }
+          ]
+        },
+        {
+          "quadrinho": 6,
+          "cena": "Plano simbólico do sopro vital como fios quase transparentes atravessando plantas, água, pedras e corpos vivos. A imagem deve parecer natural, como um ritmo oculto do mundo.",
+          "narracao": "Em cada coisa, o sopro cresce sem cessar.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 7,
+          "cena": "Uma fruta madura no galho começa a enrugar, enquanto sementes ocultas sugerem continuidade. O exterior se desgasta, mas algo interno prossegue.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "O sopro vital de cada coisa cresce ininterruptamente..."
+            }
+          ]
+        },
+        {
+          "quadrinho": 8,
+          "cena": "A fruta caída repousa sobre a terra úmida, já marcada por rachaduras e manchas. Raízes finas, insetos e folhas secas aproximam a forma de sua dissolução.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "...ao mesmo tempo que a sua forma decresce de modo incessante."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "pagina": 3,
+      "quadrinhos": [
+        {
+          "quadrinho": 1,
+          "cena": "Yu Xiong caminha lentamente por uma trilha de pedra, seguido por dois discípulos. Ao redor, árvores jovens, troncos antigos e musgo sobre rochas mostram idades diferentes no mesmo caminho.",
+          "narracao": "A mudança não precisava ser buscada longe: estava na própria passagem dos passos.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 2,
+          "cena": "Close nos pés de Yu Xiong atravessando pedras gastas. Pequenas ervas nascem nas rachaduras, enquanto folhas secas se desfazem sob as sandálias.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Não percebemos o processo de completude e deficiência."
+            }
+          ]
+        },
+        {
+          "quadrinho": 3,
+          "cena": "Um discípulo encara as próprias mãos jovens e firmes. Ao fundo, as mãos enrugadas de Yu Xiong seguram um bastão de bambu.",
+          "narracao": "No homem, a transformação também se oculta no que parece familiar.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 4,
+          "cena": "Imagem em camadas do mesmo homem nas fases da vida: recém-nascido, criança, jovem, adulto e ancião. As figuras se sobrepõem como continuidade, não como pessoas separadas.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Da mesma maneira também no homem, desde seu nascimento até a morte..."
+            }
+          ]
+        },
+        {
+          "quadrinho": 5,
+          "cena": "O rosto de uma criança se funde ao de um jovem, depois ao de um ancião, mantendo a mesma direção do olhar. A luz une as fases como se fossem um único instante estendido.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "...a sua aparência, cor, inteligência e forma se modificam a todo instante."
+            }
+          ]
+        },
+        {
+          "quadrinho": 6,
+          "cena": "Detalhe de unhas sendo cortadas sobre uma mesa baixa de madeira, ao lado de fios de cabelo caídos e uma pequena lâmina. A cena é cotidiana, simples e sem solenidade.",
+          "narracao": "Mesmo o menor sinal do corpo participa do crescimento e do declínio.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 7,
+          "cena": "Close em cabelos negros misturados a fios grisalhos, movidos pelo vento. Ao fundo, bambus jovens crescem diante de colmos antigos já partidos.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Além disso, a pele, as unhas e o cabelo ora crescem, ora decaem."
+            }
+          ]
+        },
+        {
+          "quadrinho": 8,
+          "cena": "O discípulo toca o próprio rosto, tentando sentir a mudança na pele. Yu Xiong o observa com tranquilidade, sem interromper o silêncio do momento.",
+          "narracao": "Ele procurava um intervalo onde havia apenas transformação contínua.",
+          "dialogos": []
+        }
+      ]
+    },
+    {
+      "pagina": 4,
+      "quadrinhos": [
+        {
+          "quadrinho": 1,
+          "cena": "Uma criança brinca perto do pavilhão, girando uma vareta com fitas vermelhas. Os adultos ao redor a observam como se sua infância fosse uma forma estável e intacta.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Somente no tempo da infância parecem não se alterar e permanecer idênticos."
+            }
+          ]
+        },
+        {
+          "quadrinho": 2,
+          "cena": "A criança corre por entre bambus, enquanto a mesma trilha mostra folhas caídas, brotos novos e marcas de chuva. O corpo dela está em movimento, e a paisagem também.",
+          "narracao": "Mesmo ali, a mudança já acontecia antes de ser notada.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 3,
+          "cena": "Um pincel molhado toca o papel de arroz, formando um traço escuro que se espalha enquanto começa a secar. O instante exato da transformação não pode ser separado do próprio traço.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "Como esse intervalo entre as mudanças é imperceptível..."
+            }
+          ]
+        },
+        {
+          "quadrinho": 4,
+          "cena": "Yu Xiong olha para o horizonte, onde o sol desce atrás das montanhas. Sua silhueta se mistura aos pinheiros, à névoa dourada e às sombras crescentes.",
+          "narracao": "O tempo não se anuncia; oculta-se no acontecer das coisas.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 5,
+          "cena": "Os discípulos veem no lago reflexos sobrepostos de nascimento, crescimento, velhice e morte. As imagens aparecem leves, como alterações da água, não como aparições sobrenaturais.",
+          "narracao": "",
+          "dialogos": [
+            {
+              "personagem": "Yu Xiong",
+              "texto": "...somente poderemos conhecê-lo quando chegarmos ao fim de nossa existência."
+            }
+          ]
+        },
+        {
+          "quadrinho": 6,
+          "cena": "Close no rosto do discípulo jovem, agora quieto, olhando a folha que pousou sobre sua manga. Ele não tenta mais agarrar o instante.",
+          "narracao": "Compreender era reconhecer que a mudança já havia passado antes de ser percebida.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 7,
+          "cena": "Plano amplo do pavilhão ao anoitecer, com Yu Xiong e os discípulos pequenos diante das montanhas. Vento, bambus, água e nuvens seguem um ritmo comum e quase invisível.",
+          "narracao": "Céu, Terra e homem seguem o mesmo movimento silencioso.",
+          "dialogos": []
+        },
+        {
+          "quadrinho": 8,
+          "cena": "Último quadro: a tigela de água está sobre a mesa, refletindo a lua nascente. Uma ondulação mínima atravessa o reflexo e mostra que nada está realmente parado.",
+          "narracao": "Onde o tempo se oculta, a transformação jamais cessa.",
+          "dialogos": []
+        }
+      ]
+    }
+  ]
+}

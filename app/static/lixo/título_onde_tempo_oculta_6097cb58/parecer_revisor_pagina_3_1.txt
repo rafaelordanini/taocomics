@@ -1,0 +1,33 @@
+REVISÃO CONCLUÍDA
+
+ERROS ENCONTRADOS
+
+Erro 1
+Tipo: Legibilidade
+Localização: Painel 1, caixa de texto do Narrador
+Problema: A palavra "movirento" está escrita incorretamente. Deve ser "movimento". A palavra "liltsmpo" está escrita incorretamente. Deve ser "o tempo". A palavra "cach" está escrita incorretamente. Deve ser "cada".
+Correção sugerida: IN PANEL 1, CORRECT THE NARRATOR'S TEXT TO: "O movimento da natureza é incessante, e o tempo se oculta em cada momento."
+
+Erro 2
+Tipo: Legibilidade
+Localização: Painel 2, caixa de texto do Narrador
+Problema: O texto do Narrador está ausente no painel 2 da imagem fornecida.
+Correção sugerida: ADD THE NARRATOR'S TEXT TO PANEL 2: "Crescimento e decadência, completude e deficiência, tudo faz parte do ciclo eterno."
+
+Erro 3
+Tipo: Legibilidade
+Localização: Painel 3, caixa de texto de Yu Xoing
+Problema: A palavra "Xoing" está escrita incorretamente. Deve ser "Xiong" (conforme o roteiro). A palavra "tou" está escrita incorretamente. Deve ser "Então". A palavra "jonndaie" está escrita incorretamente. Deve ser "jornada". A palavra "cocimento" está escrita incorretamente. Deve ser "conhecimento". A palavra "naturze" está escrita incorretamente. Deve ser "natureza".
+Correção sugerida: IN PANEL 3, CORRECT YU XIONG'S TEXT TO: "Assim, o fluxo do tempo não se revela no instante, mas na jornada inteira, do início ao fim."
+
+Erro 4
+Tipo: Legibilidade
+Localização: Painel 4, caixa de texto do Narrador
+Problema: A palavra "Xoing" está escrita incorretamente. Deve ser "Xiong". A palavra "realenta" está escrita incorretamente. Deve ser "sua jornada". A palavra "movioriarimiento" está escrita incorretamente. Deve ser "observador do movimento". A palavra "naturze" está escrita incorretamente. Deve ser "natureza".
+Correção sugerida: IN PANEL 4, CORRECT THE NARRATOR'S TEXT TO: "E assim, Yu Xiong continuou sua jornada, um observador do movimento incessante da natureza."
+
+Erro 5
+Tipo: Legibilidade
+Localização: Painel 5, caixa de texto do Narrador
+Problema: A palavra "ocluuta" está escrita incorretamente. Deve ser "oculta". A palavra "permaente" está escrita incorretamente. Deve ser "permanece". A palavra "movirento" está escrita incorretamente. Deve ser "movimento". A palavra "inperptétvle" está escrita incorretamente. Deve ser "imperceptível".
+Correção sugerida: IN PANEL 5, CORRECT THE NARRATOR'S TEXT TO: "Onde o tempo se oculta, ele permanece em constante movimento, eterno e imperceptível."

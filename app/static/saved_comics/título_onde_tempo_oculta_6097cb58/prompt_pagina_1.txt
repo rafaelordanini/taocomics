@@ -1,0 +1,51 @@
+Full-page comic in traditional Chinese ink wash painting style, aged parchment paper texture throughout the entire page background, warm sepia and antique gold color palette, vertical 1024x1536, full-bleed, matching the reference page: luxury oriental graphic novel, dense shan shui detail, mist, glowing ink swirls, carved dark lacquer geometric borders, parchment text boxes, classical serif/handwritten Portuguese lettering. At the top, place a safe ornamental parchment title banner with red square seals and the exact title “Onde o Tempo se Oculta”.
+
+Varied layout: title band, then a wide panoramic opening panel; below it two side-by-side panels; a narrow symbolic detail row; another wide teaching panel; final wide quiet landscape panel. No panel numbers.
+
+Panel 1: dawn in an ancient Chinese valley, misty mountains, bamboo grove, small wooden pavilion, Yu Xiong seated on a mat before silent disciples. Narration box: “Nas montanhas, Yu Xiong observava o movimento invisível.”
+Panel 2: close-up of serene elderly Yu Xiong, long beard, cold morning light, bamboo leaves moving behind him. Speech bubble: “A natureza nunca cessa.”
+Panel 3: mountains under shifting clouds, distant birds, light sliding over peaks. Speech bubble: “É o movimento secreto do Céu e da Terra.”
+Panel 4: young disciple looking upward, mist flowing between pines and rocks. Speech bubble: “Quem o percebe?”
+Panel 5: sprout between wet stones beside a dry broken leaf. Speech bubble: “Todos decaem e crescem.”
+Panel 6: ancient tree, one side flowering, one side dry, small birds perched.
+Panel 7: calm lake with open lotus beside closed lotus, wavering reflections. Speech bubble: “Ora completos, ora incompletos.”
+Panel 8: Yu Xiong points to landscape; wind moves robes, bamboo and lake. Narration box: “O mestre apontava para o que se transforma sem anunciar-se.” All text boxes, speech bubbles, titles, and main subjects must stay within the central safe zone, leaving at least a 15% empty margin on all four borders of the image.. Implement these suggested changes that you agreed do not worsen the visual work: ## RESULTADO GERAL
+### APROVADO COM RESSALVAS
+
+## ANÁLISE
+O prompt preserva bem a atmosfera taoísta: montanhas, névoa, bambu, água, lótus, transformação silenciosa, alternância entre crescimento e decadência. A página sugere fluxo natural, impermanência e movimento sutil do Céu e da Terra, sem introduzir símbolos de poder, violência ou ego incompatíveis.
+
+A ambientação chinesa é adequada, mas alguns termos visuais como “luxury oriental graphic novel”, “glowing ink swirls” e “carved dark lacquer geometric borders” podem deslocar a página para um exotismo ornamental excessivo. Para um conto de matriz taoísta, especialmente com tom próximo ao Liezi, convém favorecer simplicidade, vazio, naturalidade e observação silenciosa.
+
+Não há caracteres chineses específicos no prompt além da menção a selos vermelhos. Caso apareçam ideogramas decorativos, devem ser poucos, legíveis e conceitualmente corretos.
+
+Os diálogos propostos estão coerentes, mas alguns foram simplificados demais e perderam parte da cadência filosófica do roteiro.
+
+## PROBLEMAS ENCONTRADOS
+Nenhum problema grave.
+
+## SUGESTÕES DE MELHORIA
+1. Trecho atual: “Nas montanhas, Yu Xiong observava o movimento invisível.”  
+Sugestão: Use “Nas montanhas, Yu Xiong observava o movimento que não se deixa prender pelo olhar.”  
+Motivo: mantém melhor a ideia taoísta de um movimento real, mas não capturável pela percepção comum.
+
+2. Trecho atual: “A natureza nunca cessa.”  
+Sugestão: Use “O movimento da natureza é incessante.”  
+Motivo: soa mais preciso e menos absoluto; enfatiza processo, não afirmação abstrata.
+
+3. Trecho atual: “Todos decaem e crescem.”  
+Sugestão: Use “Assim, todos os seres ora decaem, ora crescem.”  
+Motivo: preserva a alternância cíclica, essencial ao pensamento taoísta.
+
+4. Trecho atual: “Ora completos, ora incompletos.”  
+Sugestão: Use “Ora atingem a completude, ora permanecem na deficiência.”  
+Motivo: reforça a linguagem filosófica de estados transitórios sem moralizar a imperfeição.
+
+5. Arte: reduzir exotismo ornamental.  
+Prompt sugerido ao Designer: “Reduce excessive luxury and decorative spectacle; make the page feel austere, contemplative, and close to classical Taoist simplicity, with more empty space, softer ink transitions, and fewer glowing ornamental effects. Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.”
+
+6. Selos vermelhos: evitar caracteres aleatórios.  
+Prompt sugerido ao Designer: “Use red seal stamps sparingly; if any Chinese character is legible, use only correct traditional-style seal script such as 道, without random pseudo-Chinese marks or decorative unreadable glyphs. Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.”
+
+## DECISÃO FINAL
+AUTORIZADO COM AJUSTES

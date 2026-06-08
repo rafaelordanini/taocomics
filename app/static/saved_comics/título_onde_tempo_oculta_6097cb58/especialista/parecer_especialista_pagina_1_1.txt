@@ -1,0 +1,47 @@
+## RESULTADO GERAL
+### REPROVADO
+
+## ANÁLISE
+O título principal está correto e corresponde exatamente a **“Onde o Tempo se Oculta”**.
+
+A atmosfera visual preserva bem a matriz taoísta: montanhas, névoa, água, bambu, lótus, mestre em contemplação e transformação natural. Não há símbolos de violência, poder ou ego incompatíveis com o tom do conto.
+
+Porém, os textos visíveis **não incorporaram as alterações aprovadas** e continuam com versões simplificadas em vários quadros, reduzindo a cadência filosófica do roteiro.
+
+## ANÁLISE DOS CARACTERES CHINESES
+O selo inferior com **道** está correto, legível e conceitualmente adequado ao tema taoísta.
+
+Os selos vermelhos superiores parecem conter marcas decorativas pouco legíveis ou pseudo-sigilares. Como não formam caracteres claramente verificáveis, devem ser evitados ou substituídos por selos simples com **道**.
+
+## PROBLEMAS ENCONTRADOS
+Problema 1  
+Tipo: Texto filosófico  
+Elemento analisado: Narração do primeiro quadro  
+Problema: aparece “Nas montanhas, Yu Xiong observava o movimento invisível.”, mas o roteiro aprovado exige “Nas montanhas, Yu Xiong observava o movimento que não se deixa prender pelo olhar.”
+
+Problema 2  
+Tipo: Texto filosófico  
+Elemento analisado: Fala de Yu Xiong no segundo quadro  
+Problema: aparece “A natureza nunca cessa.”, mas o roteiro aprovado exige “O movimento da natureza é incessante.”
+
+Problema 3  
+Tipo: Texto filosófico  
+Elemento analisado: Fala do quadro do broto  
+Problema: aparece “Todos decaem e crescem.”, mas o roteiro aprovado exige “Assim, todos os seres ora decaem, ora crescem.”
+
+Problema 4  
+Tipo: Texto filosófico  
+Elemento analisado: Fala do quadro do lótus  
+Problema: aparece “Ora completos, ora incompletos.”, mas o roteiro aprovado exige “Ora atingem a completude, ora permanecem na deficiência.”
+
+Problema 5  
+Tipo: Caractere Mandarim  
+Elemento analisado: Selos vermelhos superiores  
+Problema: os selos parecem conter marcas decorativas não verificáveis como caracteres chineses corretos.  
+Correção sugerida (Prompt para o Artista em INGLÊS): Use red seal stamps sparingly; if any Chinese character is legible, use only correct traditional-style seal script such as 道, without random pseudo-Chinese marks or decorative unreadable glyphs. Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.
+
+## SUGESTÕES DE MELHORIA
+Aplicar exatamente os textos do roteiro aprovado em todos os balões e caixas narrativas. A arte pode manter a composição atual, mas deve reduzir marcas sigilares pseudo-chinesas nos selos superiores.
+
+## DECISÃO FINAL
+NÃO AUTORIZADO

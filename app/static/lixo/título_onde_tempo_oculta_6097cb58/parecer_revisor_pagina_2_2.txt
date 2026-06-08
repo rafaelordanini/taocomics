@@ -1,0 +1,44 @@
+REVISÃO CONCLUÍDA
+ERROS ENCONTRADOS
+
+Erro 1
+Tipo: Ortografia
+Localização: Painel 1, caixa de texto
+Problema: A palavra "decresce" está graficamente incorreta; o correto é "decresce".
+Correção sugerida: In Panel 1, correct the spelling of "deccrece" to "decresce" in the text box.
+
+Erro 2
+Tipo: Ortografia
+Localização: Painel 2, caixa de texto
+Problema: A palavra "percebemos" está graficamente incorreta; o correto é "percebemos".
+Correção sugerida: In Panel 2, correct the spelling of "peire" to "percebemos" in the text box.
+
+Erro 3
+Tipo: Ortografia
+Localização: Painel 2, caixa de texto
+Problema: A palavra "Processo" está incorretamente escrita com 'o'; o correto inicia com 'P'.
+Correção sugerida: In Panel 2, correct the spelling of "proceso" to "processo" in the text box.
+
+Erro 4
+Tipo: Ortografia
+Localização: Caixa de texto do painel 3
+Problema: A palavra "maneira" está incorretamente escrita; o correto é "maneira". A palavra "homem" está incorretamente escrita; o correto é "homem". A palavra "desde" está incorretamente escrita; o correto é "desde". A palavra "nascimento" está incorretamente escrita; o correto é "nascimento". A palavra "à" está incorretamente escrita; o correto é "à". A palavra "morte" está incorretamente escrita; o correto é "morte". A palavra "aparência" está incorretamente escrita; o correto é "aparência". A palavra "inteligência" está incorretamente escrita; o correto é "inteligência". A palavra "modificam" está incorretamente grafada; o correto é "modificam".
+Correção sugerida: In Panel 3's text box, correct the spellings: "mamieera" to "maneira", "hormen" to "homem", "deude" to "desde", "nasccinento" to "nascimento", "ats" to "à", "norte" to "morte", "aperräncia" to "aparência", "inteiligencia" to "inteligência", and "modificais" to "modificam".
+
+Erro 5
+Tipo: Ortografia
+Localização: Painel 4, caixa de texto
+Problema: A palavra "Além" está graficamente incorreta; o correto é "Além". A palavra "disso" está incorretamente escrita; o correto é "disso". A palavra "pele" está graficamente incorreta; o correto é "pele". A palavra "unhas" está graficamente incorreta; o correto é "unhas". A palavra "cabelo" está graficamente incorreta; o correto é "cabelo". A palavra "crescem" está graficamente incorreta; o correto é "crescem". A palavra "decaem" está graficamente incorreta; o correto é "decaem".
+Correção sugerida: In Panel 4's text box, correct the spellings: "Alein" to "Além", "diso" to "disso", "pilie" to "pele", "trins" to "unhas", "cubuho" to "cabelo", "crescem" to "crescem", and "decaem" to "decaem".
+
+Erro 6
+Tipo: Ortografia
+Localização: Painel 5, caixa de texto
+Problema: A palavra "Somente" está graficamente incorreta; o correto é "Somente". A palavra "infância" está incorretamente escrita; o correto é "infância". A palavra "parecem" está incorretamente escrita; o correto é "parecem". A palavra "não" está incorretamente escrita; o correto é "não". A palavra "alterar" está incorretamente escrita; o correto é "alterar". A palavra "permanecer" está incorretamente escrita; o correto é "permanecer". A palavra "idênticos" está incorretamente escrita; o correto é "idênticos".
+Correção sugerida: In Panel 5's text box, correct the spellings: "Somiente" to "Somente", "infaahscia" to "infância", "parem" to "parecem", "nôn" to "não", "alterar" to "alterar", "permsinner" to "permanecer", and "identices" to "idênticos".
+
+Erro 7
+Tipo: Ortografia
+Localização: Painel 6, caixa de texto
+Problema: A palavra "Xiáng" está graficamente incorreta; o correto é "Xiong". A palavra "esse" está incorretamente escrita; o correto é "esse". A palavra "intervalo" está incorretamente escrita; o correto é "intervalo". A palavra "entre" está incorretamente escrita; o correto é "entre".
+Correção sugerida: In Panel 6's text box, correct the spellings: "Xíòng" to "Xiong", "esse" to "esse", "intieval" to "intervalo", and "atre" to "entre".

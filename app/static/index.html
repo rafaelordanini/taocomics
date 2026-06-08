@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaoComics AI - Conversor de Contos Taoístas em HQ</title>
+    <!-- Fontes do Google: Outfit para títulos e Inter para o corpo -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Icones Material Design -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="material-icons-round logo-icon">brush</span>
+                <h1>TaoComics <span class="accent-text">AI</span></h1>
+            </div>
+            <p class="subtitle">Conversão Multiagente de Contos Taoístas em Quadrinhos Nanquim</p>
+        </header>
+
+        <div class="app-layout">
+            
+            <!-- Coluna Esquerda: Controles e Input -->
+            <aside class="control-panel glass-card">
+                <div class="panel-section">
+                    <h3><span class="material-icons-round">vpn_key</span> Chaves de API</h3>
+                    <div class="input-group">
+                        <label for="gemini-key">Gemini (Roteirista/Revisor)</label>
+                        <input type="password" id="gemini-key" placeholder="AQ.Ab8RN6I..." value="AQ.Ab8RN6IYjwklXygXS8VYndTcKEL6o3-PxIrNt7nEUTIooFPYgg">
+                    </div>
+                    <div class="input-group">
+                        <label for="openai-key">OpenAI DALL-E 3 (Artista)</label>
+                        <input type="password" id="openai-key" placeholder="sk-proj-ED6cf..." value="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">
+                    </div>
+                    <div class="input-group">
+                        <label for="openrouter-key">OpenRouter (Backup)</label>
+                        <input type="password" id="openrouter-key" placeholder="sk-or-v1-ea86..." value="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">
+                    </div>
+                    <div class="input-group">
+                        <label for="poe-key">Poe API (Backup)</label>
+                        <input type="password" id="poe-key" placeholder="sk-poe-..." value="sk-poe-5dU7XMSEIjUgZsYWFt-n47g5GwOgXazF7b0k95TYATk">
+                    </div>
+                    <div class="input-group">
+                        <label for="ref-image">Imagem Modelo de Estilo (Opcional)</label>
+                        <input type="file" id="ref-image" accept="image/*">
+                    </div>
+                    <div class="input-group">
+                        <label for="artista-model">Modelo do Artista (Imagens)</label>
+                        <select id="artista-model" style="width: 100%; background: rgba(0,0,0,0.3); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 0.55rem; font-size: 0.85rem; font-family: inherit; outline: none; transition: border-color 0.2s;">
+                            <option value="codex/gpt-image-2" selected>(Padrão) ChatGPT Go / Codex CLI - GPT-Image-2</option>
+                            <option value="poe/gpt-image-2">Poe API - GPT-Image-2 (Backup Rápido)</option>
+                            <option value="google/imagen-4.0-generate-001">Google AI Studio - Imagen 4 (Gratuito)</option>
+                            <option value="google/gemini-2.5-flash-image">Google AI Studio - Gemini 2.5 (Gratuito)</option>
+                            <option value="openrouter/google/gemini-2.5-flash-image">OpenRouter - Gemini 2.5 Image (Econômico)</option>
+                            <option value="pollinations/flux">Pollinations.ai - FLUX (Gratuito/Com Chave)</option>
+                            <option value="openai/gpt-image-2">OpenAI - DALL-E 3 (gpt-image-2) - Último Recurso</option>
+                        </select>
+                    </div>
+                    <!-- Configurações Customizadas dos Agentes -->
+                    <div class="agents-custom-config">
+                        <details class="agent-config-details">
+                            <summary><span class="material-icons-round">history_edu</span> Roteirista</summary>
+                            <div class="input-group">
+                                <label for="roteirista-especifica">Instrução Específica (Prioridade)</label>
+                                <textarea id="roteirista-especifica" placeholder="Ex: Exatamente 2 páginas..." style="min-height: 80px;"></textarea>
+                                <div class="file-upload-row">
+                                    <input type="file" id="roteirista-arquivo" accept="image/*,application/pdf" style="display: none;" onchange="handleAgentFileUpload('roteirista', this)">
+                                    <button type="button" class="btn-file-upload" onclick="document.getElementById('roteirista-arquivo').click()"><span class="material-icons-round">upload_file</span> Anexar Exemplo</button>
+                                    <span id="roteirista-arquivo-nome" class="file-upload-status">Nenhum arquivo</span>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="agent-config-details">
+                            <summary><span class="material-icons-round">palette</span> Designer Oriental</summary>
+                            <div class="input-group">
+                                <label for="designer-especifica">Instrução Específica (Prioridade)</label>
+                                <textarea id="designer-especifica" placeholder="Ex: Destaque para montanhas com névoa..." style="min-height: 80px;"></textarea>
+                                <div class="file-upload-row">
+                                    <input type="file" id="designer-arquivo" accept="image/*,application/pdf" style="display: none;" onchange="handleAgentFileUpload('designer', this)">
+                                    <button type="button" class="btn-file-upload" onclick="document.getElementById('designer-arquivo').click()"><span class="material-icons-round">upload_file</span> Anexar Exemplo</button>
+                                    <span id="designer-arquivo-nome" class="file-upload-status">Nenhum arquivo</span>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="agent-config-details">
+                            <summary><span class="material-icons-round">brush</span> Artista (Desenho)</summary>
+                            <div class="input-group">
+                                <label for="artista-especifica">Instrução Específica (Prioridade)</label>
+                                <textarea id="artista-especifica" placeholder="Ex: Sol vermelho no topo e dragão no rio..." style="min-height: 80px;"></textarea>
+                                <div class="file-upload-row">
+                                    <input type="file" id="artista-arquivo" accept="image/*,application/pdf" style="display: none;" onchange="handleAgentFileUpload('artista', this)">
+                                    <button type="button" class="btn-file-upload" onclick="document.getElementById('artista-arquivo').click()"><span class="material-icons-round">upload_file</span> Anexar Exemplo</button>
+                                    <span id="artista-arquivo-nome" class="file-upload-status">Nenhum arquivo</span>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="agent-config-details">
+                            <summary><span class="material-icons-round">fact_check</span> Revisor</summary>
+                            <div class="input-group">
+                                <label for="revisor-especifica">Instrução Específica (Prioridade)</label>
+                                <textarea id="revisor-especifica" placeholder="Ex: Reprovar se não houver um dragão dourado..." style="min-height: 80px;"></textarea>
+                                <div class="file-upload-row">
+                                    <input type="file" id="revisor-arquivo" accept="image/*,application/pdf" style="display: none;" onchange="handleAgentFileUpload('revisor', this)">
+                                    <button type="button" class="btn-file-upload" onclick="document.getElementById('revisor-arquivo').click()"><span class="material-icons-round">upload_file</span> Anexar Exemplo</button>
+                                    <span id="revisor-arquivo-nome" class="file-upload-status">Nenhum arquivo</span>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="agent-config-details">
+                            <summary><span class="material-icons-round">menu_book</span> Especialista China</summary>
+                            <div class="input-group">
+                                <label for="especialista-especifica">Instrução Específica (Prioridade)</label>
+                                <textarea id="especialista-especifica" placeholder="Ex: Atenção ao sentido do termo Wu Wei..." style="min-height: 80px;"></textarea>
+                                <div class="file-upload-row">
+                                    <input type="file" id="especialista-arquivo" accept="image/*,application/pdf" style="display: none;" onchange="handleAgentFileUpload('especialista', this)">
+                                    <button type="button" class="btn-file-upload" onclick="document.getElementById('especialista-arquivo').click()"><span class="material-icons-round">upload_file</span> Anexar Exemplo</button>
+                                    <span id="especialista-arquivo-nome" class="file-upload-status">Nenhum arquivo</span>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <div class="panel-section" id="api-balances-section">
+                    <h3 style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span class="material-icons-round" style="color: var(--accent);">account_balance_wallet</span>
+                            <span>Saldos de API</span>
+                        </div>
+                        <button id="btn-refresh-balances" class="btn-icon-small" onclick="updateBalances(event)" title="Atualizar Saldos">
+                            <span class="material-icons-round">sync</span>
+                        </button>
+                    </h3>
+                    <div class="balances-list" id="balances-list">
+                        <!-- Itens de saldo gerados pelo JavaScript -->
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); text-align: center; padding: 0.5rem 0;">
+                            Carregando saldos...
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3><span class="material-icons-round">library_books</span> Selecione um Conto de Teste</h3>
+                    <select id="sample-tales" onchange="loadSampleTale()">
+                        <option value="">-- Escolha um conto ou digite o seu próprio --</option>
+                        <option value="borboleta">O Sonho da Borboleta (Zhuangzi)</option>
+                        <option value="inutil">A Utilidade do Inútil (Zhuangzi)</option>
+                        <option value="rio">O Monge e o Fluxo do Rio</option>
+                    </select>
+                </div>
+
+                <div class="panel-section fill-height">
+                    <h3><span class="material-icons-round">history_edu</span> Conto Taoísta</h3>
+                    <textarea id="tale-input" placeholder="Escreva ou cole aqui a história taoísta tradicional que você quer converter em quadrinhos..."></textarea>
+                    
+                    <button id="btn-generate" onclick="startGeneration()">
+                        <span class="material-icons-round">auto_awesome</span>
+                        <span>Gerar Quadrinhos</span>
+                    </button>
+                    <div id="generation-controls" class="generation-controls-container">
+                        <button id="btn-pause" onclick="pauseGeneration()" class="btn-control btn-pause" disabled>
+                            <span class="material-icons-round">pause</span>
+                            <span>Parar</span>
+                        </button>
+                        <button id="btn-resume" onclick="resumeGeneration()" class="btn-control btn-resume" disabled>
+                            <span class="material-icons-round">play_arrow</span>
+                            <span>Continuar</span>
+                        </button>
+                        <button id="btn-cancel" onclick="cancelGeneration()" class="btn-control btn-cancel" disabled>
+                            <span class="material-icons-round">cancel</span>
+                            <span>Cancelar</span>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Coluna Central: Diálogo dos Agentes -->
+            <main class="agents-console glass-card">
+                <div class="console-header">
+                    <h2><span class="material-icons-round">forum</span> Console de Orquestração</h2>
+                    <div class="console-actions">
+                        <button id="btn-clear-console" class="btn-clear" title="Limpar console">
+                            <span class="material-icons-round">delete_sweep</span> Limpar
+                        </button>
+                        <div class="status-indicator">
+                            <span class="status-dot" id="status-dot"></span>
+                            <span id="status-text">Ocioso</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="console-messages" id="console-messages">
+                    <div class="system-message">
+                        <span class="material-icons-round">info</span>
+                        <p>Aguardando inserção de conto taoísta e início da geração...</p>
+                    </div>
+                </div>
+                
+                <div class="console-footer" id="console-footer" style="display:none;">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Coluna Direita: Galeria de Imagens Geradas -->
+            <section class="output-gallery glass-card">
+                <div class="gallery-header">
+                    <h2><span class="material-icons-round">collections</span> Páginas Geradas</h2>
+                    <button id="btn-refresh" class="btn-icon" onclick="refreshGallery()" title="Atualizar Galeria"><span class="material-icons-round">refresh</span></button>
+                    <button id="btn-clear" class="btn-icon" onclick="clearGallery()" title="Limpar Galeria"><span class="material-icons-round">delete_sweep</span></button>
+                </div>
+                
+                <div class="gallery-grid" id="gallery-grid">
+                    <div class="empty-gallery">
+                        <span class="material-icons-round">image</span>
+                        <p>As páginas aprovadas pelo Revisor aparecerão aqui.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+    </div>
+
+    <!-- Modal de Visualização em Tela Cheia -->
+    <div id="image-modal" class="modal" onclick="closeModal()">
+        <div class="modal-wrapper" onclick="event.stopPropagation()">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <img class="modal-content" id="modal-img">
+            <div class="modal-footer-info">
+                <div id="modal-caption"></div>
+                <button id="btn-edit-page-trigger" class="btn-edit-page" onclick="openEditModal(event)">
+                    <span class="material-icons-round">edit</span>
+                    Editar Página
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Edição Direta (Artista) -->
+    <div id="edit-page-modal" class="modal" onclick="closeEditModal(event)">
+        <div class="modal-card glass-card animate-zoom" style="max-width: 520px; padding: 2.2rem;" onclick="event.stopPropagation()">
+            <span class="close-modal" onclick="closeEditModal()">&times;</span>
+            <span class="material-icons-round warning-icon" style="color: var(--color-artista); filter: drop-shadow(0 0 12px rgba(100, 200, 255, 0.4));">edit</span>
+            <h3 style="color: var(--color-artista); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                Editar Página com o Artista
+            </h3>
+            <p style="font-size: 0.9rem; margin-bottom: 0.8rem; text-align: center;">
+                Sua instrução será enviada diretamente ao Artista para redesenhar a página. Esta alteração <strong>não</strong> passará pelo Revisor nem pelo Especialista China.
+            </p>
+            
+            <div class="input-group" style="width: 100%; text-align: left; margin: 1rem 0;">
+                <label for="edit-instrucao" style="font-size: 0.8rem; font-weight: 600; color: var(--color-artista); display: flex; align-items: center; gap: 4px;">
+                    <span class="material-icons-round">psychology_alt</span> Instrução para o Artista
+                </label>
+                <textarea id="edit-instrucao" placeholder="Descreva o que deseja mudar... (ex: Mude os diálogos para português brasileiro e remova os caracteres em mandarim da direita)" style="min-height: 90px; font-size: 0.8rem; padding: 0.5rem; width: 100%; box-sizing: border-box;"></textarea>
+            </div>
+            
+            <div class="modal-buttons" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                <button id="btn-submit-edit" onclick="submitPageEdit()" class="btn-modal btn-edit-submit" style="background: linear-gradient(135deg, var(--color-artista), #2a7aff); color: #fff; font-weight: bold; width: 100%; border: none;">
+                    <span class="material-icons-round">brush</span>
+                    Redesenhar Página
+                </button>
+            </div>
+            
+            <!-- Indicador de Carregamento da Edição -->
+            <div id="edit-loading-indicator" style="display: none; align-items: center; justify-content: center; gap: 10px; margin-top: 15px;">
+                <span class="material-icons-round animate-spin" style="color: var(--color-artista);">sync</span>
+                <span style="font-size: 0.85rem; color: #ccc;">Redesenhando página com o Artista... Por favor aguarde.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Decisão (Pausa) -->
+    <div id="pause-modal" class="modal">
+        <div class="modal-card glass-card animate-zoom" style="max-width: 520px; padding: 2.2rem;">
+            <span class="material-icons-round warning-icon" style="color: var(--color-lider); filter: drop-shadow(0 0 12px rgba(212, 175, 55, 0.4));">gavel</span>
+            <h3 style="color: var(--color-lider); font-family: 'Outfit', sans-serif;">Central de Decisão do Líder</h3>
+            <p id="pause-modal-text" style="font-size: 0.9rem; margin-bottom: 0.8rem;">Revisores reprovaram esta página 5 vezes. Como Líder, digite sua instrução abaixo para forçar o andamento ou redesenho:</p>
+            
+            <!-- Visualizador de Imagem Temporária do Líder -->
+            <div id="pause-modal-image-container" style="display: none; width: 100%; text-align: center; margin: 0.8rem 0;"></div>
+            
+            <div class="input-group" style="width: 100%; text-align: left; margin: 0.8rem 0;">
+                <label for="lider-diretiva" style="font-size: 0.8rem; font-weight: 600; color: var(--color-lider); display: flex; align-items: center; gap: 4px;">
+                    <span class="material-icons-round">psychology_alt</span> Diretiva do Líder / Alteração ao Artista
+                </label>
+                <textarea id="lider-diretiva" placeholder="Digite aqui o comando de alteração para o Artista, ou deixe em branco se for apenas tentar de novo..." style="min-height: 70px; font-size: 0.8rem; padding: 0.5rem; width: 100%; box-sizing: border-box;"></textarea>
+            </div>
+            
+            <div class="modal-buttons" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+                <button id="btn-skip-page" onclick="sendDecision('skip')" class="btn-modal btn-skip" style="background: linear-gradient(135deg, var(--color-lider), #b89320); color: #000; font-weight: bold; width: 100%; border: none;">
+                    <span class="material-icons-round">gavel</span>
+                    Forçar Aprovação (Líder)
+                </button>
+                <button id="btn-retry-with-directive" onclick="sendDecision('retry_with_directive')" class="btn-modal btn-retry" style="background: linear-gradient(135deg, var(--color-artista), #634399); color: #fff; font-weight: bold; width: 100%; border: none;">
+                    <span class="material-icons-round">edit</span>
+                    Enviar Diretiva de Alteração ao Artista
+                </button>
+                <button id="btn-retry-no-directive" onclick="sendDecision('retry_no_directive')" class="btn-modal btn-cancel" style="width: 100%; border: 1px solid rgba(255,255,255,0.2);">
+                    <span class="material-icons-round">replay</span>
+                    Tentar Mais 5 Vezes (IAs)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

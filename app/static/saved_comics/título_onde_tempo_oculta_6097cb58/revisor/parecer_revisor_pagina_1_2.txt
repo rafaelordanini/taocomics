@@ -1,0 +1,26 @@
+REVISÃO CONCLUÍDA  
+ERROS ENCONTRADOS
+
+Erro 1  
+Tipo: Consistência  
+Localização: Caixa de narração do primeiro painel panorâmico.  
+Problema: O texto ainda aparece como “Nas montanhas, Yu Xiong observava o movimento invisível.”, sem aplicar a alteração aprovada.  
+Correção sugerida: Substitua por “Nas montanhas, Yu Xiong observava o movimento que não se deixa prender pelo olhar.” Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.
+
+Erro 2  
+Tipo: Consistência  
+Localização: Balão do painel com close-up de Yu Xiong.  
+Problema: O texto ainda aparece como “A natureza nunca cessa.”, sem aplicar a formulação aprovada.  
+Correção sugerida: Substitua por “O movimento da natureza é incessante.” Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.
+
+Erro 3  
+Tipo: Consistência  
+Localização: Balão do painel com broto e folha seca.  
+Problema: O texto ainda aparece como “Todos decaem e crescem.”, sem aplicar a versão aprovada.  
+Correção sugerida: Substitua por “Assim, todos os seres ora decaem, ora crescem.” Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.
+
+Erro 4  
+Tipo: Consistência  
+Localização: Balão do painel do lago com lótus.  
+Problema: O texto ainda aparece como “Ora completos, ora incompletos.”, sem aplicar a formulação filosófica aprovada.  
+Correção sugerida: Substitua por “Ora atingem a completude, ora permanecem na deficiência.” Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner.
