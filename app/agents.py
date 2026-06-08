@@ -384,19 +384,29 @@ def _registrar_modelo_utilizado(tale_dir: str, filename: str, status: str, model
         print(f"Erro ao registrar modelo utilizado: {e}")
 
 def _run_codex_text(prompt: str) -> str:
-    import subprocess
-    cmd = [
-        "/Applications/Codex.app/Contents/Resources/codex",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "exec",
-        prompt,
-        "--skip-git-repo-check"
-    ]
-    result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=240)
-    if result.returncode != 0:
-        raise RuntimeError(f"Codex CLI falhou com código {result.returncode}. STDOUT: {result.stdout}. STDERR: {result.stderr}")
-    
-    return result.stdout.strip()
+    worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
+    worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
+
+    if not worker_url:
+        raise RuntimeError(
+            "CODEX_WORKER_URL não configurado."
+        )
+
+    headers = {}
+    if worker_token:
+        headers["Authorization"] = f"Bearer {worker_token}"
+
+    response = httpx.post(
+        f"{worker_url}/run-text",
+        json={"prompt": prompt},
+        headers=headers,
+        timeout=300.0
+    )
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Codex worker retornou erro {response.status_code}: {response.text[:300]}")
+
+    return response.json()["text"]
 
 def _run_poe_text(prompt: str, model: str = "Claude-3.5-Sonnet", image: Image.Image = None, api_key: str = None) -> str:
     import openai
@@ -445,8 +455,8 @@ def _executar_agente_texto_visao(
     
     # 1. Tentar Codex
     try:
-        if not os.path.exists("/Applications/Codex.app/Contents/Resources/codex"):
-            raise FileNotFoundError("Codex CLI binary not found at /Applications/Codex.app/Contents/Resources/codex")
+        if not os.environ.get("CODEX_WORKER_URL"):
+            raise FileNotFoundError("CODEX_WORKER_URL não configurado")
             
         if sse_send:
             sse_send(f"[{agent_name}] Usando o modelo: Codex (gpt-5.5)")

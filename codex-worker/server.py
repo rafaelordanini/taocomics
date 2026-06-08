@@ -77,6 +77,26 @@ def generate_image(req: GenerateRequest, authorization: str = Header(default="")
     return {"b64_json": b64}
 
 
+@app.post("/run-text")
+def run_text(req: GenerateRequest, authorization: str = Header(default="")):
+    if AUTH_TOKEN and authorization != f"Bearer {AUTH_TOKEN}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", req.prompt, "--skip-git-repo-check"]
+
+    try:
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Codex timeout")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail=f"Codex binary not found at {CODEX_BIN}")
+
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Codex falhou: {result.stderr[:500]}")
+
+    return {"text": result.stdout.strip()}
+
+
 @app.get("/health")
 def health():
     codex_ok = os.path.exists(CODEX_BIN)
