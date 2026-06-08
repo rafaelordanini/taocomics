@@ -913,56 +913,32 @@ def _designer_fallback(
 # --------------------------
 
 def _generar_imagem_codex(prompt: str, modelos_paths: list = None) -> dict:
-    import subprocess
-    import shutil
+    worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
+    worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
 
-    CODEX_BIN = "/Applications/Codex.app/Contents/Resources/codex"
-    GEN_DIR = os.path.expanduser("~/.codex/generated_images")
+    if not worker_url:
+        raise RuntimeError(
+            "CODEX_WORKER_URL não configurado. "
+            "Defina a variável de ambiente com a URL do codex-worker (ex: http://34.58.184.49:8080)."
+        )
 
-    def list_images():
-        imgs = []
-        if os.path.isdir(GEN_DIR):
-            for root, _, files in os.walk(GEN_DIR):
-                for f in files:
-                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
-                        fp = os.path.join(root, f)
-                        try:
-                            imgs.append((fp, os.path.getmtime(fp)))
-                        except Exception:
-                            pass
-        return imgs
+    headers = {}
+    if worker_token:
+        headers["Authorization"] = f"Bearer {worker_token}"
 
-    before = {fp for fp, _ in list_images()}
+    response = httpx.post(
+        f"{worker_url}/generate-image",
+        json={"prompt": prompt},
+        headers=headers,
+        timeout=3700.0
+    )
 
-    # Trunca o prompt para ~800 chars — o Codex CLI não é um gerador de imagem nativo,
-    # ele escreve código para chamar a API, então prompts longos causam timeout.
-    MAX_PROMPT_LEN = 800
-    prompt_truncado = prompt[:MAX_PROMPT_LEN] if len(prompt) > MAX_PROMPT_LEN else prompt
+    if response.status_code != 200:
+        raise RuntimeError(f"Codex worker retornou erro {response.status_code}: {response.text[:300]}")
 
-    # Executa o Codex CLI com bypass de sandbox/approvals e stdin fechado para não bloquear.
-    # Timeout de 300s: o Codex precisa escrever/executar código internamente, então leva ~5 min.
-    full_prompt = f"Generate an image: {prompt_truncado}. Image size 1024x1536."
-    cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", full_prompt, "--skip-git-repo-check"]
+    data = response.json()
+    return {"url": None, "b64_json": data["b64_json"]}
 
-    result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=3600)
-    if result.returncode != 0:
-        raise RuntimeError(f"Codex CLI falhou com código {result.returncode}. STDOUT: {result.stdout}. STDERR: {result.stderr}")
-        
-    after = list_images()
-    new_imgs = [(fp, mt) for fp, mt in after if fp not in before]
-    if not new_imgs:
-        raise RuntimeError("Codex CLI executou, mas nenhuma imagem nova foi gerada no diretório do Codex.")
-        
-    new_imgs.sort(key=lambda x: x[1], reverse=True)
-    newest_image_path = new_imgs[0][0]
-    
-    with open(newest_image_path, "rb") as img_file:
-        b64_data = base64.b64encode(img_file.read()).decode("utf-8")
-        
-    return {
-        "url": None,
-        "b64_json": b64_data
-    }
 
 def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None) -> dict:
     if model_name == "codex/gpt-image-2":
