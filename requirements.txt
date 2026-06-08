@@ -7,4 +7,6 @@ httpx==0.28.1
 pillow==11.1.0
 pypdf
 anthropic==0.105.2
+google-api-python-client==2.136.0
+google-auth==2.32.0
 
