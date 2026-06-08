@@ -1,12 +1,15 @@
 import os
 import queue
 import threading
+import logging
 from pydantic import BaseModel
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execute_page_edit
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Taoist Comic Generator")
 
@@ -29,13 +32,14 @@ def _resolve_saved_comics_dir() -> str:
         try:
             path = os.path.join(base, "saved_comics")
             os.makedirs(path, exist_ok=True)
-            # Testa escrita
             test = os.path.join(path, ".write_test")
             with open(test, "w") as f:
                 f.write("ok")
             os.remove(test)
+            logging.info(f"[STORAGE] Usando diretório: {path}")
             return path
         except OSError:
+            logging.warning(f"[STORAGE] {base} não gravável, tentando próximo...")
             continue
     raise RuntimeError("Nenhum diretório gravável encontrado para saved_comics")
 
@@ -43,6 +47,10 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 def get_saved_comics_dir() -> str:
     return _resolve_saved_comics_dir()
+
+# Log no startup para mostrar qual storage está sendo usado
+_startup_dir = _resolve_saved_comics_dir()
+logging.info(f"[STARTUP] Storage ativo: {_startup_dir} | /data existe: {os.path.exists('/data')} | /data gravável: {os.access('/data', os.W_OK)}")
 
 
 class SessionState:
@@ -330,6 +338,26 @@ async def generate_comic(request: Request):
                 yield "data: [PING]\n\n"
                 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# Diagnóstico de storage
+@app.get("/api/storage-info")
+async def storage_info():
+    data_exists = os.path.exists("/data")
+    data_writable = os.access("/data", os.W_OK) if data_exists else False
+    active_dir = get_saved_comics_dir()
+    try:
+        files = os.listdir(active_dir)
+    except Exception as e:
+        files = [f"ERRO: {e}"]
+    return {
+        "active_dir": active_dir,
+        "using_persistent_volume": active_dir.startswith("/data"),
+        "/data_exists": data_exists,
+        "/data_writable": data_writable,
+        "files_count": len(files),
+        "files": files[:20],
+    }
 
 
 # Rota para expor uma API simples para listar as HQs salvas
