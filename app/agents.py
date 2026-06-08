@@ -950,10 +950,11 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
         headers["Authorization"] = f"Bearer {worker_token}"
 
     if sse_send:
-        sse_send("[Artista (Desenho)] Aguardando geração da imagem pelo Codex... (pode levar até 10 minutos)")
+        sse_send("[Artista (Desenho)] Aguardando geração da imagem pelo Codex... (pode levar até 5 minutos)")
 
     import threading
 
+    MAX_WAIT = 360  # 6 minutos — um pouco acima do timeout do worker (5min)
     result_container = {}
     error_container = {}
 
@@ -963,7 +964,7 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
                 f"{worker_url}/generate-image",
                 json={"prompt": prompt},
                 headers=headers,
-                timeout=3700.0
+                timeout=370.0
             )
             result_container["response"] = response
         except Exception as e:
@@ -980,6 +981,10 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
             elapsed += interval
             mins = elapsed // 60
             secs = elapsed % 60
+            if elapsed >= MAX_WAIT:
+                if sse_send:
+                    sse_send(f"[Artista (Desenho)] ⚠️ Codex travou após {mins}m{secs:02d}s sem resposta. Reinicie o worker na VM com: bash ~/codex-worker/restart.sh")
+                raise RuntimeError(f"Codex não respondeu após {MAX_WAIT}s. Worker travado — reinicie o serviço na VM.")
             if sse_send:
                 sse_send(f"[Artista (Desenho)] Aguardando Codex... ({mins}m{secs:02d}s decorridos — normal para geração de imagem)")
 
