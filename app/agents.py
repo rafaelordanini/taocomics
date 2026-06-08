@@ -934,7 +934,7 @@ def _designer_fallback(
 # 3. Agente Artista
 # --------------------------
 
-def _generar_imagem_codex(prompt: str, modelos_paths: list = None) -> dict:
+def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None) -> dict:
     worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
     worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
     logging.info(f"[codex-worker] CODEX_WORKER_URL={worker_url!r}")
@@ -949,13 +949,44 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None) -> dict:
     if worker_token:
         headers["Authorization"] = f"Bearer {worker_token}"
 
-    response = httpx.post(
-        f"{worker_url}/generate-image",
-        json={"prompt": prompt},
-        headers=headers,
-        timeout=3700.0
-    )
+    if sse_send:
+        sse_send("[Artista (Desenho)] Aguardando geração da imagem pelo Codex... (pode levar até 10 minutos)")
 
+    import threading
+
+    result_container = {}
+    error_container = {}
+
+    def do_request():
+        try:
+            response = httpx.post(
+                f"{worker_url}/generate-image",
+                json={"prompt": prompt},
+                headers=headers,
+                timeout=3700.0
+            )
+            result_container["response"] = response
+        except Exception as e:
+            error_container["error"] = e
+
+    thread = threading.Thread(target=do_request, daemon=True)
+    thread.start()
+
+    elapsed = 0
+    interval = 30
+    while thread.is_alive():
+        thread.join(timeout=interval)
+        if thread.is_alive():
+            elapsed += interval
+            mins = elapsed // 60
+            secs = elapsed % 60
+            if sse_send:
+                sse_send(f"[Artista (Desenho)] Aguardando Codex... ({mins}m{secs:02d}s decorridos — normal para geração de imagem)")
+
+    if "error" in error_container:
+        raise error_container["error"]
+
+    response = result_container["response"]
     if response.status_code != 200:
         raise RuntimeError(f"Codex worker retornou erro {response.status_code}: {response.text[:300]}")
 
@@ -963,9 +994,9 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None) -> dict:
     return {"url": None, "b64_json": data["b64_json"]}
 
 
-def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None) -> dict:
+def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None, sse_send=None) -> dict:
     if model_name == "codex/gpt-image-2":
-        return _generar_imagem_codex(prompt, modelos_paths=modelos_paths)
+        return _generar_imagem_codex(prompt, modelos_paths=modelos_paths, sse_send=sse_send)
     elif model_name == "poe/gpt-image-2":
         return _generar_imagem_poe(prompt, api_key=poe_key)
     elif model_name == "openai/gpt-image-2":
@@ -1146,16 +1177,16 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
         sse_send(f"[Artista] Tentando gerar imagem com o modelo: {model} (Tentativa {idx+1}/{len(models_to_try)})...")
         try:
             if model == "openai/gpt-image-2":
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths)
+                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
             elif model == "google/gemini-2.5-flash-image" or model == "google/imagen-4.0-generate-001":
-                res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths)
+                res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
             elif model == "pollinations/flux":
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths)
+                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
             elif model.startswith("openrouter/"):
                 model_id = model.replace("openrouter/", "")
                 res = _artista_fallback(or_client, prompt, model_id=model_id)
             else:
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths)
+                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
             
             res["model_used"] = model
             sse_send(f"[Artista] Sucesso usando o modelo: {model}!")
