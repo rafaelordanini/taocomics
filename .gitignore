@@ -18,6 +18,9 @@ env/
 .env
 .env.*
 *.env
+credentials.json
+token.json
+gerar_token.py
 
 # Imagens geradas e arquivos de HQ salvas (dados de produção, não código)
 app/static/saved_comics/
