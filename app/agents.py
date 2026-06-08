@@ -386,6 +386,15 @@ def _registrar_modelo_utilizado(tale_dir: str, filename: str, status: str, model
     except Exception as e:
         print(f"Erro ao registrar modelo utilizado: {e}")
 
+
+def _drive_upload(path: str):
+    try:
+        from app.drive_upload import upload_file_to_drive
+        upload_file_to_drive(path)
+    except Exception:
+        pass
+
+
 def _run_codex_text(prompt: str) -> str:
     worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
     worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
@@ -2393,6 +2402,7 @@ def processar_conto_taoista(
         # Salva o roteiro na pasta do conto
         with open(roteiro_path, "w", encoding="utf-8") as f:
             json.dump(roteiro, f, ensure_ascii=False, indent=2)
+        _drive_upload(roteiro_path)
         sse_send(f"[Sistema] Novo roteiro salvo na pasta do conto: {roteiro_path}")
         
         if reasoning:
@@ -2451,12 +2461,14 @@ def processar_conto_taoista(
             parecer_roteiro_path = os.path.join(especialista_dir, f"parecer_especialista_roteiro_{tentativas_esp_roteiro}_{_status_rot}.txt")
             with open(parecer_roteiro_path, "w", encoding="utf-8") as f:
                 f.write(esp_roteiro_content)
+            _drive_upload(parecer_roteiro_path)
             sse_send(f"[Sistema] Parecer {tentativas_esp_roteiro} do Especialista China para o roteiro salvo em: {parecer_roteiro_path}")
 
             # Salva também no arquivo principal para visualização/compatibilidade
             parecer_principal_path = os.path.join(especialista_dir, "parecer_especialista_roteiro.txt")
             with open(parecer_principal_path, "w", encoding="utf-8") as f:
                 f.write(esp_roteiro_content)
+            _drive_upload(parecer_principal_path)
             
             if esp_roteiro_reasoning:
                 sse_send(f"[Especialista China] JSON:{json.dumps({'text': f'Parecer sobre o Roteiro (Revisão {tentativas_esp_roteiro}):\n{esp_roteiro_content}', 'reasoning': esp_roteiro_reasoning}, ensure_ascii=False)}")
@@ -2525,6 +2537,7 @@ def processar_conto_taoista(
                 roteiro_cache_path = os.path.join(tale_dir, "roteiro.json")
                 with open(roteiro_cache_path, "w", encoding="utf-8") as f:
                     json.dump(roteiro, f, ensure_ascii=False, indent=2)
+                _drive_upload(roteiro_cache_path)
                 sse_send(f"[Sistema] Roteiro atualizado salvo em: {roteiro_cache_path}")
                 
                 if tentativas_esp_roteiro >= max_tentativas_esp_roteiro:
@@ -2567,6 +2580,7 @@ def processar_conto_taoista(
             # Salva o prompt na pasta do conto
             with open(prompt_path, "w", encoding="utf-8") as f:
                 f.write(prompt_designer)
+            _drive_upload(prompt_path)
             sse_send(f"[Sistema] Novo prompt da página {i} salvo na pasta do conto: {prompt_path}")
             
         if designer_reasoning:
@@ -2659,7 +2673,8 @@ def processar_conto_taoista(
                 
                 with open(parecer_prompt_path, "w", encoding="utf-8") as f:
                     f.write(resultado_esp_prompt)
-                
+                _drive_upload(parecer_prompt_path)
+
                 if esp_prompt_reasoning:
                     sse_send(f"[Especialista China] JSON:{json.dumps({'text': f'Parecer do Especialista sobre o Prompt:\\n{resultado_esp_prompt}', 'reasoning': esp_prompt_reasoning}, ensure_ascii=False)}")
                 else:
@@ -2838,12 +2853,14 @@ def processar_conto_taoista(
                 parecer_revisor_path = os.path.join(revisor_dir, f"parecer_revisor_pagina_{i}_{tentativa_revisao}_{_status_rev}.txt")
                 with open(parecer_revisor_path, "w", encoding="utf-8") as f:
                     f.write(resultado_revisao)
+                _drive_upload(parecer_revisor_path)
                 sse_send(f"[Sistema] Parecer {tentativa_revisao} do Revisor para a página {i} salvo em: {parecer_revisor_path}")
 
                 # Salva também no arquivo principal para visualização/compatibilidade
                 parecer_revisor_principal_path = os.path.join(revisor_dir, f"parecer_revisor_pagina_{i}.txt")
                 with open(parecer_revisor_principal_path, "w", encoding="utf-8") as f:
                     f.write(resultado_revisao)
+                _drive_upload(parecer_revisor_principal_path)
                 
                 if revisor_reasoning:
                     sse_send(f"[Revisor] JSON:{json.dumps({'text': f'Parecer do Revisor: \"{resultado_revisao}\"', 'reasoning': revisor_reasoning}, ensure_ascii=False)}")
@@ -2933,12 +2950,14 @@ def processar_conto_taoista(
                         parecer_pagina_path = os.path.join(especialista_dir, f"parecer_especialista_pagina_{i}_{tentativa_atual_esp}_{_status_esp}.txt")
                         with open(parecer_pagina_path, "w", encoding="utf-8") as f:
                             f.write(resultado_especialista)
+                        _drive_upload(parecer_pagina_path)
                         sse_send(f"[Sistema] Parecer {tentativa_atual_esp} do Especialista China para a página {i} salvo em: {parecer_pagina_path}")
 
                         # Salva também no arquivo principal para visualização/compatibilidade
                         parecer_principal_path = os.path.join(especialista_dir, f"parecer_especialista_pagina_{i}.txt")
                         with open(parecer_principal_path, "w", encoding="utf-8") as f:
                             f.write(resultado_especialista)
+                        _drive_upload(parecer_principal_path)
                         
                         especialista_rejeitou = (
                             "REPROVADO" in resultado_especialista.upper()
