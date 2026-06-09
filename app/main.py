@@ -337,7 +337,15 @@ async def generate_comic(request: Request):
                 # Envia um ping para manter a conexão ativa
                 yield "data: [PING]\n\n"
                 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 # Diagnóstico de storage
