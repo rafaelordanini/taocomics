@@ -1254,12 +1254,15 @@ def _orquestrador_montar_prompt_artista(
     diretiva_lider: str = None
 ) -> str:
     """
-    Orquestrador centraliza e comprime toda informação destinada ao Artista.
-    Produz um prompt único e enxuto para o Codex gerar a imagem.
-    Limite alvo: ~800 chars para performance máxima no Codex.
+    Orquestrador centraliza toda informação destinada ao Artista.
+    O prompt do Designer é enviado integralmente (contém todos os quadrinhos).
+    Apenas feedbacks e diretivas são comprimidos.
     """
-    # Base: prompt do designer já é o núcleo visual da página
-    base = prompt_designer[:500] if len(prompt_designer) > 500 else prompt_designer
+    # Prompt do Designer vai inteiro — truncar quebra a descrição dos quadrinhos
+    parts = [prompt_designer]
+
+    # Lembrete estrutural mínimo para garantir layout de múltiplos quadrinhos
+    parts.append("Draw 6-10 comic panels per page with varied layout (panoramic + side-by-side). Include speech bubbles and narrative boxes.")
 
     corrections = []
     if feedback_revisor:
@@ -1269,7 +1272,6 @@ def _orquestrador_montar_prompt_artista(
         resumo = _resumir_feedback_para_artista(g_client, feedback_especialista, "Specialist", max_chars=150)
         corrections.append(f"Fix: {resumo}")
 
-    parts = [base]
     if corrections:
         parts.append("CORRECTIONS: " + " | ".join(corrections))
     if diretiva_lider:
