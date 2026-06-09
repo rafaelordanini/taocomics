@@ -92,19 +92,12 @@ Faixa de pergaminho ornamentada no topo da página 1, ocupando toda a largura:
 - Título centralizado em tipografia de caligrafia taoísta — letras grandes, expressivas, preto profundo ou sépia escuro, simulando pincel de tinta manual.
 - Aparência de tratado filosófico da China antiga.
 - O título deve ser EXATAMENTE o mesmo informado no roteiro.
-- Margem de segurança de 15% no topo e nas laterais.
 
 ---
 
 # NARRADOR
 
 Quando o roteiro trouxer "Narrador: [texto]", NUNCA inclua a palavra "Narrador:" na imagem. Instrua o Artista a colocar apenas o texto limpo em uma caixa de narração com fundo de pergaminho.
-
----
-
-# MARGEM DE SEGURANÇA (15% SAFE ZONE)
-
-Em todos os prompts, inclua no final: "All text boxes, speech bubbles, titles, and main subjects must stay within the central safe zone, leaving at least a 15% empty margin on all four borders of the image."
 
 ---
 
@@ -118,7 +111,6 @@ O prompt deve:
 3. Descrever cada painel: cena, personagens, ações, iluminação.
 4. Especificar os balões/caixas de texto com fundo de pergaminho e o texto em português que deve aparecer em cada um.
 5. Incluir o selo 道 no canto inferior direito (exceto página 1).
-6. Terminar sempre com a instrução de margem de segurança.
 
 Máximo de 250 palavras. Seja específico e visual. Evite floreios literários.
 
