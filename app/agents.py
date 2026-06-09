@@ -1490,27 +1490,9 @@ def _revisor_primary(
     sse_send: Callable[[str], None] = None,
     tentativa: int = 1
 ) -> dict:
-    # Flexibilidade progressiva: tentativa 1 rigoroso, 2 flexível em estilo, 3+ só gramática e título pág1
-    if tentativa >= 3:
-        rigor_estilo = (
-            "Nesta tentativa avançada, seja MUITO flexível com aspectos visuais e de layout. "
-            "APROVE a imagem a menos que haja erro gramatical grave em português nos textos visíveis"
-            + (f" ou ausência/erro no título '{titulo}' na página 1" if num_pagina == 1 and titulo else "") + ". "
-            "Ignore imperfeições de estilo, número de painéis ou composição."
-        )
-    elif tentativa == 2:
-        rigor_estilo = (
-            "Nesta segunda tentativa, seja flexível com estilo visual, composição e layout de painéis. "
-            "Foque apenas em erros graves de gramática portuguesa nos textos visíveis"
-            + (f" e na presença correta do título '{titulo}'" if num_pagina == 1 and titulo else "") + "."
-        )
-    else:
-        rigor_estilo = "Seja rigoroso em todos os critérios."
-
     prompt_text = (
         f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n\n"
         f"Instruções do Designer: {prompt_designer}\n\n"
-        f"Nível de rigor desta revisão (tentativa {tentativa}): {rigor_estilo}\n\n"
         f"Verificações:\n"
         f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos, névoa e montanhas taoístas.\n"
         f"2. Caixas de texto/balões: Aprove se existirem e estiverem bem dispostos, mesmo com texto ilegível.\n"
@@ -1596,22 +1578,9 @@ def _revisor_fallback(
     if image is not None:
         backup_models = [m for m in backup_models if m != "deepseek/deepseek-chat"]
 
-    if tentativa >= 3:
-        rigor_estilo = (
-            "MUITO flexível: aprove salvo erro gramatical grave em português"
-            + (f" ou ausência do título '{titulo}' na página 1" if num_pagina == 1 and titulo else "") + "."
-        )
-    elif tentativa == 2:
-        rigor_estilo = (
-            "Flexível em estilo/layout. Foque em erros gramaticais graves em português"
-            + (f" e presença do título '{titulo}'" if num_pagina == 1 and titulo else "") + "."
-        )
-    else:
-        rigor_estilo = "Rigoroso em todos os critérios."
-
     if image is not None:
         prompt_text = (
-            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}. Rigor (tentativa {tentativa}): {rigor_estilo}\n\n"
+            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}.\n\n"
             f"Instruções do Designer: {prompt_designer}\n\n"
             f"Verificações:\n"
             f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos.\n"
