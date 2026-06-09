@@ -47,6 +47,8 @@ def _run_image_job(job_id: str, prompt: str):
             timeout=300
         )
     except subprocess.TimeoutExpired:
+        # Mata processos Codex zumbis para não travar a próxima geração
+        subprocess.run(["pkill", "-f", "codex"], capture_output=True)
         with jobs_lock:
             jobs[job_id] = {"status": "error", "error": "Codex timeout após 5 minutos"}
         return
@@ -151,6 +153,21 @@ def run_text(req: GenerateRequest, authorization: str = Header(default="")):
         raise HTTPException(status_code=500, detail=f"Codex falhou: {result.stderr[:500]}")
 
     return {"text": result.stdout.strip()}
+
+
+@app.post("/restart")
+def restart_worker(authorization: str = Header(default="")):
+    if AUTH_TOKEN and authorization != f"Bearer {AUTH_TOKEN}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Mata processos Codex travados
+    subprocess.run(["pkill", "-f", "codex"], capture_output=True)
+    # Limpa jobs com erro/pendentes há mais de 10 min
+    cutoff = time.time() - 600
+    with jobs_lock:
+        stale = [jid for jid, j in jobs.items() if j.get("status") in ("pending", "error")]
+        for jid in stale:
+            jobs.pop(jid, None)
+    return {"status": "restarted", "cleared_jobs": len(stale)}
 
 
 @app.get("/health")

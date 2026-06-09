@@ -1179,12 +1179,25 @@ def _artista_fallback(client, prompt: str, model_id: str = "google/gemini-2.5-fl
 
 
 def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
-    # MODO TESTE: apenas Codex permitido — nenhum outro modelo de imagem será tentado
-    models_to_try = ["codex/gpt-image-2"]
+    CODEX_MAX_RETRIES = 2
+    models_to_try = []
+
+    # Até 2 tentativas no Codex antes de cair no fallback
+    for _ in range(CODEX_MAX_RETRIES):
+        models_to_try.append("codex/gpt-image-2")
+
+    # Fallback: Poe GPT-Image se Codex falhar
+    if poe_key:
+        models_to_try.append("poe/gpt-image-2")
 
     last_error = None
     for idx, model in enumerate(models_to_try):
-        sse_send(f"[Artista] Tentando gerar imagem com o modelo: {model} (Tentativa {idx+1}/{len(models_to_try)})...")
+        is_retry = model == "codex/gpt-image-2" and idx > 0
+        attempt_label = f"Tentativa {idx+1}/{len(models_to_try)}"
+        if is_retry:
+            sse_send(f"[Artista (Desenho)] Codex travou — reiniciando worker e tentando novamente... ({attempt_label})")
+        else:
+            sse_send(f"[Artista (Desenho)] Tentando gerar imagem com o modelo: {model} ({attempt_label})...")
         try:
             if model == "openai/gpt-image-2":
                 res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
@@ -1197,15 +1210,32 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
                 res = _artista_fallback(or_client, prompt, model_id=model_id)
             else:
                 res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            
+
             res["model_used"] = model
-            sse_send(f"[Artista] Sucesso usando o modelo: {model}!")
+            sse_send(f"[Artista (Desenho)] Sucesso usando o modelo: {model}!")
             return res
         except Exception as e:
-            sse_send(f"[Artista] Falha com o modelo {model}: {str(e)}")
+            err_str = str(e)
+            sse_send(f"[Artista (Desenho)] Falha com o modelo {model}: {err_str}")
             last_error = e
-            
+            # Se Codex travou, solicita restart do worker antes de tentar novamente
+            if model == "codex/gpt-image-2" and "timeout" in err_str.lower():
+                _restart_codex_worker()
+
     raise last_error or RuntimeError("Todos os modelos de geração de imagem falharam.")
+
+
+def _restart_codex_worker():
+    """Solicita restart do worker Codex via endpoint dedicado (melhor esforço)."""
+    try:
+        worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
+        worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
+        if not worker_url:
+            return
+        headers = {"Authorization": f"Bearer {worker_token}"} if worker_token else {}
+        httpx.post(f"{worker_url}/restart", headers=headers, timeout=10.0)
+    except Exception:
+        pass
 
 
 
