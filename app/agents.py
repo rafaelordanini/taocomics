@@ -2910,6 +2910,20 @@ def processar_conto_taoista(
         if check_status:
             check_status()
         sse_send(f"[Sistema] === INICIANDO PROCESSAMENTO DA PÁGINA {i} de {total_paginas} ===")
+
+        # Inicializa variáveis locais explicitamente para evitar problemas de closure com lambdas
+        _des_especifica = inst.get("designer", {}).get("especifica")
+        _des_arquivo_b64 = inst.get("designer", {}).get("arquivo_b64")
+        _des_arquivo_mime = inst.get("designer", {}).get("arquivo_mime")
+        _art_especifica = inst.get("artista", {}).get("especifica")
+        _art_arquivo_b64 = inst.get("artista", {}).get("arquivo_b64")
+        _art_arquivo_mime = inst.get("artista", {}).get("arquivo_mime")
+        _rev_especifica = inst.get("revisor", {}).get("especifica")
+        _rev_arquivo_b64 = inst.get("revisor", {}).get("arquivo_b64")
+        _rev_arquivo_mime = inst.get("revisor", {}).get("arquivo_mime")
+        _esp_especifica = inst.get("especialista", {}).get("especifica")
+        _esp_arquivo_b64 = inst.get("especialista", {}).get("arquivo_b64")
+        _esp_arquivo_mime = inst.get("especialista", {}).get("arquivo_mime")
         
         # Caminho do prompt do designer para a página
         prompt_path = os.path.join(designer_dir, f"prompt_pagina_{i}.txt")
@@ -2930,8 +2944,8 @@ def processar_conto_taoista(
             sse_send(f"[Designer Oriental] Criando o prompt visual para a página {i}...")
             designer_res = run_with_retry(
                 "Designer Oriental",
-                lambda: _designer_primary(g_client, pagina_script, i, total_paginas, ref_image, des_geral, des_especifica, art_geral, art_especifica, des_arquivo_b64, des_arquivo_mime, art_arquivo_b64, art_arquivo_mime, titulo=titulo),
-                lambda: _designer_fallback(or_client, pagina_script, i, total_paginas, ref_image, des_geral, des_especifica, art_geral, art_especifica, des_arquivo_b64, des_arquivo_mime, art_arquivo_b64, art_arquivo_mime, titulo=titulo),
+                lambda: _designer_primary(g_client, pagina_script, i, total_paginas, ref_image, des_geral, _des_especifica, art_geral, _art_especifica, _des_arquivo_b64, _des_arquivo_mime, _art_arquivo_b64, _art_arquivo_mime, titulo=titulo),
+                lambda: _designer_fallback(or_client, pagina_script, i, total_paginas, ref_image, des_geral, _des_especifica, art_geral, _art_especifica, _des_arquivo_b64, _des_arquivo_mime, _art_arquivo_b64, _art_arquivo_mime, titulo=titulo),
                 sse_send
             )
             prompt_designer = designer_res["content"]
@@ -2998,7 +3012,7 @@ def processar_conto_taoista(
                 def especialista_prompt_call():
                     return _especialista_prompt_primary(
                         g_client, prompt_designer, pagina_script, i, total_paginas,
-                        esp_geral, esp_especifica, esp_arquivo_b64, esp_arquivo_mime, titulo=titulo
+                        esp_geral, _esp_especifica, _esp_arquivo_b64, _esp_arquivo_mime, titulo=titulo
                     )
                     
                 def especialista_prompt_fallback_call():
@@ -3006,7 +3020,7 @@ def processar_conto_taoista(
                         sse_send("[Especialista China] Acionando backups no OpenRouter...")
                         return _especialista_prompt_fallback(
                             or_client, prompt_designer, pagina_script, i, total_paginas,
-                            esp_geral, esp_especifica, esp_arquivo_b64, esp_arquivo_mime, titulo=titulo
+                            esp_geral, _esp_especifica, _esp_arquivo_b64, _esp_arquivo_mime, titulo=titulo
                         )
                     except Exception as e_or:
                         if ant_client:
@@ -3014,7 +3028,7 @@ def processar_conto_taoista(
                             try:
                                 return _especialista_prompt_fallback_claude(
                                     ant_client, prompt_designer, pagina_script, i, total_paginas,
-                                    esp_geral, esp_especifica, titulo=titulo
+                                    esp_geral, _esp_especifica, titulo=titulo
                                 )
                             except Exception as e_claude:
                                 sse_send(f"[Especialista China] Claude de Backup também falhou: {str(e_claude)}.")
@@ -3051,8 +3065,8 @@ def processar_conto_taoista(
                     sse_send(f"[Designer Oriental] Corrigindo o prompt da página {i} com base na rejeição do Especialista...")
                     designer_res = run_with_retry(
                         "Designer Oriental",
-                        lambda: _designer_primary(g_client, pagina_script, i, total_paginas, ref_image, des_geral, f"{des_especifica or ''}. Critical correction details from China Specialist: {resultado_esp_prompt}", art_geral, art_especifica, des_arquivo_b64, des_arquivo_mime, art_arquivo_b64, art_arquivo_mime, titulo=titulo),
-                        lambda: _designer_fallback(or_client, pagina_script, i, total_paginas, ref_image, des_geral, f"{des_especifica or ''}. Critical correction details from China Specialist: {resultado_esp_prompt}", art_geral, art_especifica, des_arquivo_b64, des_arquivo_mime, art_arquivo_b64, art_arquivo_mime, titulo=titulo),
+                        lambda: _designer_primary(g_client, pagina_script, i, total_paginas, ref_image, des_geral, f"{_des_especifica or ''}. Critical correction details from China Specialist: {resultado_esp_prompt}", art_geral, _art_especifica, _des_arquivo_b64, _des_arquivo_mime, _art_arquivo_b64, _art_arquivo_mime, titulo=titulo),
+                        lambda: _designer_fallback(or_client, pagina_script, i, total_paginas, ref_image, des_geral, f"{_des_especifica or ''}. Critical correction details from China Specialist: {resultado_esp_prompt}", art_geral, _art_especifica, _des_arquivo_b64, _des_arquivo_mime, _art_arquivo_b64, _art_arquivo_mime, titulo=titulo),
                         sse_send
                     )
                     prompt_designer = designer_res["content"]
@@ -3091,23 +3105,20 @@ def processar_conto_taoista(
         while not revisao_aprovada:
             if check_status:
                 check_status()
-            
-            # Re-avalia as instruções e arquivos locais a cada tentativa de desenho/revisão para suportar alterações dinâmicas mid-run
-            des_especifica = inst.get("designer", {}).get("especifica")
-            des_arquivo_b64 = inst.get("designer", {}).get("arquivo_b64")
-            des_arquivo_mime = inst.get("designer", {}).get("arquivo_mime")
-            
-            art_especifica = inst.get("artista", {}).get("especifica")
-            art_arquivo_b64 = inst.get("artista", {}).get("arquivo_b64")
-            art_arquivo_mime = inst.get("artista", {}).get("arquivo_mime")
-            
-            rev_especifica = inst.get("revisor", {}).get("especifica")
-            rev_arquivo_b64 = inst.get("revisor", {}).get("arquivo_b64")
-            rev_arquivo_mime = inst.get("revisor", {}).get("arquivo_mime")
-            
-            esp_especifica = inst.get("especialista", {}).get("especifica")
-            esp_arquivo_b64 = inst.get("especialista", {}).get("arquivo_b64")
-            esp_arquivo_mime = inst.get("especialista", {}).get("arquivo_mime")
+
+            # Re-avalia as instruções a cada tentativa para suportar alterações dinâmicas mid-run
+            _des_especifica = inst.get("designer", {}).get("especifica")
+            _des_arquivo_b64 = inst.get("designer", {}).get("arquivo_b64")
+            _des_arquivo_mime = inst.get("designer", {}).get("arquivo_mime")
+            _art_especifica = inst.get("artista", {}).get("especifica")
+            _art_arquivo_b64 = inst.get("artista", {}).get("arquivo_b64")
+            _art_arquivo_mime = inst.get("artista", {}).get("arquivo_mime")
+            _rev_especifica = inst.get("revisor", {}).get("especifica")
+            _rev_arquivo_b64 = inst.get("revisor", {}).get("arquivo_b64")
+            _rev_arquivo_mime = inst.get("revisor", {}).get("arquivo_mime")
+            _esp_especifica = inst.get("especialista", {}).get("especifica")
+            _esp_arquivo_b64 = inst.get("especialista", {}).get("arquivo_b64")
+            _esp_arquivo_mime = inst.get("especialista", {}).get("arquivo_mime")
             
             tentativa_revisao += 1
             sse_send(f"[Artista] Desenhando a página {i} (Geração {tentativa_revisao})...")
@@ -3174,18 +3185,18 @@ def processar_conto_taoista(
                 sse_send(f"[Revisor] Inspecionando imagem e textos da página {i}...")
                 
                 def revisor_primary_call():
-                    rev_esp_com_lider = rev_especifica
+                    rev_esp_com_lider = _rev_especifica
                     if diretiva_lider_atual:
-                        rev_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {rev_especifica or ''}"
-                    return _revisor_primary(g_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, rev_arquivo_b64, rev_arquivo_mime, titulo=titulo, tentativa=tentativa_revisao)
+                        rev_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {_rev_especifica or ''}"
+                    return _revisor_primary(g_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, _rev_arquivo_b64, _rev_arquivo_mime, titulo=titulo, tentativa=tentativa_revisao)
 
                 def revisor_fallback_call():
-                    rev_esp_com_lider = rev_especifica
+                    rev_esp_com_lider = _rev_especifica
                     if diretiva_lider_atual:
-                        rev_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {rev_especifica or ''}"
+                        rev_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {_rev_especifica or ''}"
                     try:
                         sse_send("[Revisor] Acionando backups no OpenRouter...")
-                        return _revisor_fallback(or_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, rev_arquivo_b64, rev_arquivo_mime, titulo=titulo, sse_send=sse_send, tentativa=tentativa_revisao)
+                        return _revisor_fallback(or_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, _rev_arquivo_b64, _rev_arquivo_mime, titulo=titulo, sse_send=sse_send, tentativa=tentativa_revisao)
                     except Exception as e_or:
                         if ant_client:
                             sse_send(f"[Revisor] Backups do OpenRouter falharam: {str(e_or)}. Acionando Claude 3.5 Sonnet como último recurso...")
@@ -3274,18 +3285,18 @@ def processar_conto_taoista(
                         sse_send(f"[Especialista China] Analisando consistência e caracteres chineses da página {i} (Revisão {tentativa_atual_esp})...")
                         
                         def especialista_primary_call():
-                            esp_esp_com_lider = esp_especifica
+                            esp_esp_com_lider = _esp_especifica
                             if diretiva_lider_atual:
-                                esp_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {esp_especifica or ''}"
-                            return _especialista_pagina_primary(g_client, imagem_final, prompt_designer, pagina_script, i, total_paginas, esp_geral, esp_esp_com_lider, esp_arquivo_b64, esp_arquivo_mime, titulo=titulo)
+                                esp_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {_esp_especifica or ''}"
+                            return _especialista_pagina_primary(g_client, imagem_final, prompt_designer, pagina_script, i, total_paginas, esp_geral, esp_esp_com_lider, _esp_arquivo_b64, _esp_arquivo_mime, titulo=titulo)
                             
                         def especialista_fallback_call():
-                            esp_esp_com_lider = esp_especifica
+                            esp_esp_com_lider = _esp_especifica
                             if diretiva_lider_atual:
-                                esp_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {esp_especifica or ''}"
+                                esp_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {_esp_especifica or ''}"
                             try:
                                 sse_send("[Especialista China] Acionando backups no OpenRouter...")
-                                return _especialista_pagina_fallback(or_client, imagem_final, prompt_designer, pagina_script, i, total_paginas, esp_geral, esp_esp_com_lider, esp_arquivo_b64, esp_arquivo_mime, titulo=titulo)
+                                return _especialista_pagina_fallback(or_client, imagem_final, prompt_designer, pagina_script, i, total_paginas, esp_geral, esp_esp_com_lider, _esp_arquivo_b64, _esp_arquivo_mime, titulo=titulo)
                             except Exception as e_or:
                                 if ant_client:
                                     sse_send(f"[Especialista China] Backups do OpenRouter falharam: {str(e_or)}. Acionando Claude 3.5 Sonnet como último recurso...")
