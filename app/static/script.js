@@ -228,20 +228,20 @@ function getCurrentInstructions() {
     };
 }
 
-// Inicia o processo de conversão via SSE
+// Inicia o processo de conversão via polling
 async function startGeneration() {
     const conto = document.getElementById("tale-input").value.trim();
-    
+
     const geminiKey = document.getElementById("gemini-key").value.trim();
     const openaiKey = document.getElementById("openai-key").value.trim();
     const openrouterKey = document.getElementById("openrouter-key").value.trim();
     const poeKey = document.getElementById("poe-key") ? document.getElementById("poe-key").value.trim() : "";
-    
+
     if (!conto) {
         alert("Por favor, digite ou selecione um conto taoísta.");
         return;
     }
-    
+
     const btn = document.getElementById("btn-generate");
     const controls = document.getElementById("generation-controls");
     const btnPause = document.getElementById("btn-pause");
@@ -252,24 +252,28 @@ async function startGeneration() {
     const statusText = document.getElementById("status-text");
     const footer = document.getElementById("console-footer");
     const progressBar = document.getElementById("progress-bar");
-    
+
     // Altera estados visuais
     btn.disabled = true;
     btnPause.disabled = false;
     btnResume.disabled = true;
     btnCancel.disabled = false;
-    
+
     consoleMessages.innerHTML = "";
     statusDot.className = "status-dot active";
     statusText.innerText = "Executando agentes...";
     footer.style.display = "block";
     progressBar.style.width = "5%";
-    
+
     addSystemMessage("Orquestrador de Agentes iniciado. Enviando conto taoísta para processamento...");
-    
+
     // Captura as instruções específicas de cada agente (as gerais ficam em arquivos MD no servidor)
     const instrucoes = getCurrentInstructions();
-    
+
+    // Flag para cancelamento local do polling
+    window.activePolling = true;
+    window.activeReader = null; // mantido para compatibilidade com cancelGeneration
+
     try {
         const response = await fetch("/api/generate", {
             method: "POST",
@@ -287,31 +291,50 @@ async function startGeneration() {
                 artista_model: document.getElementById("artista-model").value
             })
         });
-        
+
         if (!response.ok) {
             throw new Error(`Erro no servidor: ${response.statusText}`);
         }
-        
-        const reader = response.body.getReader();
-        window.activeReader = reader;
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
-        
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n\n");
-            buffer = lines.pop(); // Mantém o resto incompleto no buffer
-            
-            for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                    const message = line.replace("data: ", "").trim();
-                    if (message && message !== "[PING]") {
-                        processAgentMessage(message);
-                    }
+
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        const sessionId = data.session_id;
+        window.activeSessionId = sessionId;
+
+        // Polling a cada 2s
+        let since = 0;
+        let finished = false;
+
+        while (!finished && window.activePolling) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            if (!window.activePolling) break;
+
+            let pollData;
+            try {
+                const pollRes = await fetch(`/api/session/${sessionId}/messages?since=${since}`);
+                pollData = await pollRes.json();
+            } catch (pollErr) {
+                // Erro de rede temporário — tenta novamente no próximo ciclo
+                continue;
+            }
+
+            const msgs = pollData.messages || [];
+            for (const msg of msgs) {
+                if (msg === "[FIM]" || msg.startsWith("[ERRO]")) {
+                    processAgentMessage(msg);
+                    finished = true;
+                    break;
                 }
+                processAgentMessage(msg);
+            }
+            since += msgs.length;
+
+            if (pollData.done && !finished) {
+                finished = true;
             }
         }
     } catch (err) {
@@ -319,6 +342,7 @@ async function startGeneration() {
         statusDot.className = "status-dot";
         statusText.innerText = "Falha";
     } finally {
+        window.activePolling = false;
         window.activeReader = null;
         btn.disabled = false;
         btnPause.disabled = true;
@@ -810,14 +834,10 @@ async function cancelGeneration() {
             document.getElementById("btn-cancel").disabled = true;
             document.getElementById("btn-pause").disabled = true;
             document.getElementById("btn-resume").disabled = true;
-            
-            // Cancela o reader ativo para fechar a conexão imediatamente no cliente
-            if (window.activeReader) {
-                try {
-                    await window.activeReader.cancel();
-                } catch (e_reader) {}
-                window.activeReader = null;
-            }
+
+            // Para o polling imediatamente
+            window.activePolling = false;
+            window.activeReader = null;
             
             // Limpa todo o console de mensagens dos agentes
             const consoleMessages = document.getElementById("console-messages");

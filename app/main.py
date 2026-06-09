@@ -4,7 +4,7 @@ import threading
 import logging
 from pydantic import BaseModel
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execute_page_edit
@@ -261,10 +261,16 @@ async def generate_comic(request: Request):
     active_sessions[session_id] = state
 
     event_queue = queue.Queue()
-    
+    # Lista acumulada de todas as mensagens da sessão (para polling)
+    state.messages = []
+    state.messages_lock = threading.Lock()
+    state.done = False
+
     def sse_send(message: str):
         event_queue.put(message)
-        
+        with state.messages_lock:
+            state.messages.append(message)
+
     def check_status():
         if state.cancelled:
             raise RuntimeError("Geração cancelada pelo usuário.")
@@ -313,39 +319,39 @@ async def generate_comic(request: Request):
                 check_status=check_status,
                 artista_model=artista_model
             )
-            event_queue.put("[FIM]")
+            sse_send("[FIM]")
         except Exception as e:
-            event_queue.put(f"[ERRO] {str(e)}")
-            event_queue.put("[FIM]")
+            sse_send(f"[ERRO] {str(e)}")
+            sse_send("[FIM]")
         finally:
-            if session_id in active_sessions:
-                del active_sessions[session_id]
-            
+            state.done = True
+            # Remove a sessão da memória após 5 minutos para liberar recursos
+            def _cleanup():
+                import time
+                time.sleep(300)
+                active_sessions.pop(session_id, None)
+            threading.Thread(target=_cleanup, daemon=True).start()
+
     threading.Thread(target=run_pipeline, daemon=True).start()
-    
-    # Gerador de SSE para enviar mensagens em tempo real para o navegador
-    def event_generator():
-        yield f"data: [SESSION_ID] {session_id}\n\n"
-        while True:
-            try:
-                # Espera por mensagens com timeout de 30s para batimento cardíaco
-                msg = event_queue.get(timeout=30.0)
-                yield f"data: {msg}\n\n"
-                if msg == "[FIM]" or msg.startswith("[ERRO]"):
-                    break
-            except queue.Empty:
-                # Envia um ping para manter a conexão ativa
-                yield "data: [PING]\n\n"
-                
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        }
-    )
+
+    return {"session_id": session_id}
+
+
+@app.get("/api/session/{session_id}/messages")
+async def get_session_messages(session_id: str, since: int = 0):
+    if session_id not in active_sessions:
+        # Sessão pode ter terminado e sido removida — retorna done
+        return {"messages": [], "done": True}
+    state = active_sessions[session_id]
+    with state.messages_lock:
+        msgs = state.messages[since:]
+        done = state.done
+    # Remove a sessão da memória somente depois que o cliente confirmar que recebeu tudo
+    if done and session_id in active_sessions:
+        # Deixa o cliente coletar a última leva; limpa após o done ser entregue
+        # A limpeza definitiva ocorre 60 s depois para tolerar reconexões
+        pass
+    return {"messages": msgs, "done": done}
 
 
 # Diagnóstico de storage
