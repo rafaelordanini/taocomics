@@ -1178,6 +1178,28 @@ def _artista_fallback(client, prompt: str, model_id: str = "google/gemini-2.5-fl
             time.sleep(2.0 * (attempt + 1))
 
 
+def _resumir_feedback_para_artista(g_client, feedback: str, origem: str, max_chars: int = 200) -> str:
+    """Usa Gemini Flash para resumir feedback longo em max_chars caracteres."""
+    if len(feedback) <= max_chars:
+        return feedback
+    try:
+        sys_prompt = (
+            f"You are a concise editor. Summarize the following {origem} feedback for an image artist "
+            f"in at most {max_chars} characters in English. Keep only the most critical visual corrections. "
+            "Output only the summary, no preamble."
+        )
+        response = g_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[{"role": "user", "parts": [{"text": feedback}]}],
+            config=types.GenerateContentConfig(system_instruction=sys_prompt, max_output_tokens=100)
+        )
+        summary = response.text.strip()
+        return summary[:max_chars] if len(summary) > max_chars else summary
+    except Exception:
+        # Fallback: truncate inteligente (pega início que contém os problemas principais)
+        return feedback[:max_chars]
+
+
 def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
     CODEX_MAX_RETRIES = 2
     models_to_try = []
@@ -2842,26 +2864,21 @@ def processar_conto_taoista(
             sse_send(f"[Artista] Desenhando a página {i} (Geração {tentativa_revisao})...")
             
             try:
-                # Monta o prompt unificado: base do designer + pareceres de rejeição (revisor e/ou especialista) + diretiva do líder
-                prompt_a_gerar = prompt_designer
+                # Monta o prompt unificado: base do designer + pareceres resumidos + diretiva do líder
                 feedbacks = []
                 if feedback_revisor:
-                    feedbacks.append(f"Reviewer corrections: {feedback_revisor}")
+                    resumo_revisor = _resumir_feedback_para_artista(g_client, feedback_revisor, "Revisor")
+                    feedbacks.append(f"Reviewer: {resumo_revisor}")
                 if feedback_especialista:
-                    feedbacks.append(f"Specialist corrections: {feedback_especialista}")
-                STYLE_REMINDER = (
-                    "Maintain the full taoist visual style: aged parchment paper texture as full page background, "
-                    "warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), "
-                    "thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured "
-                    "background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, "
-                    "and the 道 red seal stamp in the bottom-right corner."
-                )
+                    resumo_esp = _resumir_feedback_para_artista(g_client, feedback_especialista, "Especialista")
+                    feedbacks.append(f"Specialist: {resumo_esp}")
                 if feedbacks:
-                    prompt_a_gerar = f"{prompt_designer}. CORRECTIONS REQUIRED: {' | '.join(feedbacks)} — {STYLE_REMINDER}"
+                    prompt_a_gerar = f"{prompt_designer}. CORRECTIONS REQUIRED: {' | '.join(feedbacks)}"
                 else:
-                    prompt_a_gerar = f"{prompt_designer}. {STYLE_REMINDER}"
+                    prompt_a_gerar = prompt_designer
                 if diretiva_lider_atual:
-                    prompt_a_gerar = f"{prompt_a_gerar}. LEADER DIRECTIVE (Max Priority): {diretiva_lider_atual}"
+                    lider_resumido = diretiva_lider_atual[:200] if len(diretiva_lider_atual) > 200 else diretiva_lider_atual
+                    prompt_a_gerar = f"{prompt_a_gerar}. LEADER DIRECTIVE: {lider_resumido}"
                     
                 # 3. Artista desenha (gerar_imagem_artista com fallback em cascata)
                 img_data = gerar_imagem_artista(
