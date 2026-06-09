@@ -1246,6 +1246,57 @@ def _resumir_feedback_para_artista(g_client, feedback: str, origem: str, max_cha
         return feedback[:max_chars]
 
 
+MAX_PROMPT_ARTISTA = 2000
+
+
+def _comprimir_prompt_designer(g_client, prompt_designer: str) -> str:
+    """
+    Comprime o prompt do Designer para MAX_PROMPT_ARTISTA chars,
+    preservando número de quadrinhos, sequência e ações visuais de cada painel.
+    Tenta Gemini Flash primeiro, depois Codex, depois truncamento de emergência.
+    """
+    if len(prompt_designer) <= MAX_PROMPT_ARTISTA:
+        return prompt_designer
+
+    sys_prompt = (
+        f"You are compressing a comic page prompt for an image AI. "
+        f"The prompt describes {6}-{10} panels. Rewrite it in at most {MAX_PROMPT_ARTISTA} characters in English, "
+        "preserving: total panel count, panel layout order, key visual action and characters in EACH panel, "
+        "and any speech bubble / caption text. Remove redundant adjectives and repeated style descriptions. "
+        "Output only the compressed prompt, no preamble."
+    )
+    user_msg = prompt_designer
+
+    # 1. Gemini Flash
+    try:
+        response = g_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[{"role": "user", "parts": [{"text": user_msg}]}],
+            config=types.GenerateContentConfig(
+                system_instruction=sys_prompt,
+                max_output_tokens=600,
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            )
+        )
+        result = response.text.strip()
+        if result:
+            return result[:MAX_PROMPT_ARTISTA]
+    except Exception as e:
+        print(f"[Orquestrador] Gemini Flash falhou ao comprimir prompt: {e}")
+
+    # 2. Codex
+    try:
+        full = f"{sys_prompt}\n\nPrompt to compress:\n{user_msg}"
+        result = _run_codex_text(full)
+        if result:
+            return result.strip()[:MAX_PROMPT_ARTISTA]
+    except Exception as e:
+        print(f"[Orquestrador] Codex falhou ao comprimir prompt: {e}")
+
+    # 3. Truncamento de emergência (melhor que nada)
+    return prompt_designer[:MAX_PROMPT_ARTISTA]
+
+
 def _orquestrador_montar_prompt_artista(
     g_client,
     prompt_designer: str,
@@ -1255,14 +1306,13 @@ def _orquestrador_montar_prompt_artista(
 ) -> str:
     """
     Orquestrador centraliza toda informação destinada ao Artista.
-    O prompt do Designer é enviado integralmente (contém todos os quadrinhos).
-    Apenas feedbacks e diretivas são comprimidos.
+    Comprime o prompt do Designer de forma inteligente preservando todos os quadrinhos.
+    Feedbacks e diretivas também são comprimidos.
     """
-    # Prompt do Designer vai inteiro — truncar quebra a descrição dos quadrinhos
-    parts = [prompt_designer]
+    base = _comprimir_prompt_designer(g_client, prompt_designer)
 
-    # Lembrete estrutural mínimo para garantir layout de múltiplos quadrinhos
-    parts.append("Draw 6-10 comic panels per page with varied layout (panoramic + side-by-side). Include speech bubbles and narrative boxes.")
+    # Lembrete estrutural mínimo
+    parts = [base, "Draw 6-10 comic panels per page with varied layout. Include speech bubbles and narrative boxes."]
 
     corrections = []
     if feedback_revisor:
