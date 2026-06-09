@@ -3,6 +3,8 @@ import io
 import time
 import json
 import logging
+import threading
+import concurrent.futures
 
 logging.basicConfig(level=logging.INFO)
 
@@ -493,6 +495,7 @@ def _executar_agente_texto_visao(
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
+                    max_output_tokens=8192,
                     thinking_config=types.ThinkingConfig(thinking_budget=0)
                 )
             )
@@ -3395,7 +3398,6 @@ def processar_conto_taoista(
 
     # Páginas 2+ em paralelo (até 3 simultâneas para não sobrecarregar a VM)
     if len(paginas) > 1:
-        import concurrent.futures
         MAX_WORKERS = 3
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             futures = {
