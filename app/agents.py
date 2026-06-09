@@ -395,22 +395,27 @@ def _drive_upload(path: str):
         logging.warning(f"[drive_upload] Falha ao enviar {path}: {e}")
 
 
-def _run_codex_text(prompt: str) -> str:
+def _run_codex_text(prompt: str, image: "Image.Image" = None) -> str:
     worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
     worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
 
     if not worker_url:
-        raise RuntimeError(
-            "CODEX_WORKER_URL não configurado."
-        )
+        raise RuntimeError("CODEX_WORKER_URL não configurado.")
 
     headers = {}
     if worker_token:
         headers["Authorization"] = f"Bearer {worker_token}"
 
+    payload = {"prompt": prompt}
+    if image is not None:
+        import io as _io
+        buf = _io.BytesIO()
+        image.save(buf, format="PNG")
+        payload["image_b64"] = base64.b64encode(buf.getvalue()).decode("utf-8")
+
     response = httpx.post(
         f"{worker_url}/run-text",
-        json={"prompt": prompt},
+        json=payload,
         headers=headers,
         timeout=300.0
     )
@@ -475,12 +480,6 @@ def _executar_agente_texto_visao(
         else:
             print(f"[{agent_name}] Tentando usar Codex CLI...")
             
-        temp_img_path = None
-        if image:
-            os.makedirs(os.path.expanduser("~/.codex"), exist_ok=True)
-            temp_img_path = os.path.expanduser(f"~/.codex/temp_vision_{int(time.time())}.png")
-            image.save(temp_img_path)
-            
         MAX_CODEX_PROMPT = 8000
         prompt_codex = prompt[:MAX_CODEX_PROMPT] if len(prompt) > MAX_CODEX_PROMPT else prompt
 
@@ -488,16 +487,8 @@ def _executar_agente_texto_visao(
         if system_instruction:
             full_prompt += f"System Instruction (Context/Identity):\n{system_instruction}\n\n"
         full_prompt += f"Task Prompt:\n{prompt_codex}"
-        if temp_img_path:
-            full_prompt += f"\n\nPlease analyze the image located at this file path: {temp_img_path}"
 
-        content = _run_codex_text(full_prompt)
-        
-        if temp_img_path and os.path.exists(temp_img_path):
-            try:
-                os.remove(temp_img_path)
-            except Exception:
-                pass
+        content = _run_codex_text(full_prompt, image=image if image else None)
                 
         msg_succ = f"[{agent_name}] Sucesso usando Codex CLI!"
         if sse_send:

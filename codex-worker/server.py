@@ -83,6 +83,7 @@ def _run_image_job(job_id: str, prompt: str):
 
 class GenerateRequest(BaseModel):
     prompt: str
+    image_b64: str = None  # imagem opcional em base64 (PNG) para análise
 
 
 @app.post("/generate-image")
@@ -119,7 +120,19 @@ def run_text(req: GenerateRequest, authorization: str = Header(default="")):
     if AUTH_TOKEN and authorization != f"Bearer {AUTH_TOKEN}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", req.prompt, "--skip-git-repo-check"]
+    prompt = req.prompt
+    temp_img_path = None
+
+    # Se imagem foi enviada, salva temporariamente e adiciona o caminho ao prompt
+    if req.image_b64:
+        tmp_dir = os.path.expanduser("~/.codex")
+        os.makedirs(tmp_dir, exist_ok=True)
+        temp_img_path = os.path.join(tmp_dir, f"temp_vision_{int(time.time())}.png")
+        with open(temp_img_path, "wb") as f:
+            f.write(base64.b64decode(req.image_b64))
+        prompt += f"\n\nPlease analyze the image located at this file path: {temp_img_path}"
+
+    cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", prompt, "--skip-git-repo-check"]
 
     try:
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300)
@@ -127,6 +140,12 @@ def run_text(req: GenerateRequest, authorization: str = Header(default="")):
         raise HTTPException(status_code=504, detail="Codex timeout")
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail=f"Codex binary not found at {CODEX_BIN}")
+    finally:
+        if temp_img_path and os.path.exists(temp_img_path):
+            try:
+                os.remove(temp_img_path)
+            except Exception:
+                pass
 
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=f"Codex falhou: {result.stderr[:500]}")
