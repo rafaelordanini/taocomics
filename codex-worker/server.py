@@ -34,8 +34,7 @@ def _list_images():
 
 def _run_image_job(job_id: str, prompt: str):
     before = {fp for fp, _ in _list_images()}
-    prompt_truncado = prompt[:4000]
-    full_prompt = f"Generate an image: {prompt_truncado}. Image size 1024x1536."
+    full_prompt = f"Generate an image: {prompt}. Image size 1024x1536."
     cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", full_prompt, "--skip-git-repo-check"]
 
     try:

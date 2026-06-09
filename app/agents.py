@@ -465,21 +465,62 @@ def _executar_agente_texto_visao(
     image: Image.Image = None,
     custom_keys: dict = None,
     sse_send: Callable[[str], None] = None,
-    fallback_or_fn: Callable[[], dict] = None
+    fallback_or_fn: Callable[[], dict] = None,
+    g_client=None
 ) -> dict:
     keys = custom_keys or {}
     last_error = None
-    
-    # 1. Tentar Codex
+
+    # 1. Tentar Gemini Flash (gratuito/barato, sem usar Codex nem Poe)
+    g_client_to_use = g_client or keys.get("g_client")
+    if g_client_to_use:
+        try:
+            if sse_send:
+                sse_send(f"[{agent_name}] Usando o modelo: Gemini 2.5 Flash")
+            else:
+                print(f"[{agent_name}] Tentando usar Gemini 2.5 Flash...")
+
+            contents = []
+            if image:
+                import io as _io
+                buf = _io.BytesIO()
+                image.save(buf, format="PNG")
+                contents.append(types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"))
+            contents.append(prompt)
+
+            response = g_client_to_use.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0)
+                )
+            )
+            content = extract_content_from_gemini(response)
+            msg_succ = f"[{agent_name}] Sucesso usando Gemini 2.5 Flash!"
+            if sse_send:
+                sse_send(msg_succ)
+            else:
+                print(msg_succ)
+            return {"content": content, "reasoning": None}
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Gemini Flash falhou: {str(e)}"
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
+
+    # 2. Tentar Codex
     try:
         if not os.environ.get("CODEX_WORKER_URL"):
             raise FileNotFoundError("CODEX_WORKER_URL não configurado")
-            
+
         if sse_send:
             sse_send(f"[{agent_name}] Usando o modelo: Codex (gpt-5.5)")
         else:
             print(f"[{agent_name}] Tentando usar Codex CLI...")
-            
+
         MAX_CODEX_PROMPT = 8000
         prompt_codex = prompt[:MAX_CODEX_PROMPT] if len(prompt) > MAX_CODEX_PROMPT else prompt
 
@@ -489,7 +530,7 @@ def _executar_agente_texto_visao(
         full_prompt += f"Task Prompt:\n{prompt_codex}"
 
         content = _run_codex_text(full_prompt, image=image if image else None)
-                
+
         msg_succ = f"[{agent_name}] Sucesso usando Codex CLI!"
         if sse_send:
             sse_send(msg_succ)
@@ -504,7 +545,16 @@ def _executar_agente_texto_visao(
             print(msg_fail)
         last_error = e
 
-    # 2. Tentar Poe
+    # 3. Tentar OpenRouter / Gemini (fallback nativo pago)
+    if fallback_or_fn:
+        msg_try = f"[{agent_name}] Executando fallback nativo/OpenRouter..."
+        if sse_send:
+            sse_send(msg_try)
+        else:
+            print(msg_try)
+        return fallback_or_fn()
+
+    # 4. Poe como último recurso
     try:
         poe_models = ["Claude-3.5-Sonnet", "Claude-3-5-Sonnet", "GPT-4o"]
         poe_content = None
@@ -528,10 +578,10 @@ def _executar_agente_texto_visao(
                     break
             except Exception as pe:
                 poe_err = pe
-                
+
         if not poe_content:
             raise poe_err or RuntimeError("Poe API falhou com todos os modelos.")
-            
+
         msg_succ = f"[{agent_name}] Sucesso usando Poe API!"
         if sse_send:
             sse_send(msg_succ)
@@ -546,15 +596,6 @@ def _executar_agente_texto_visao(
             print(msg_fail)
         last_error = e
 
-    # 3. Tentar OpenRouter / Gemini
-    if fallback_or_fn:
-        msg_try = f"[{agent_name}] Executando fallback nativo/OpenRouter..."
-        if sse_send:
-            sse_send(msg_try)
-        else:
-            print(msg_try)
-        return fallback_or_fn()
-        
     raise last_error or RuntimeError("Todos os canais de IA falharam.")
 
 def _generar_imagem_poe(prompt: str, api_key: str = None) -> dict:
@@ -711,7 +752,8 @@ def _roteirista_fallback(client, conto: str, geral: str = None, especifica: str 
         prompt=prompt,
         system_instruction=system_instruction,
         sse_send=sse_send,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
 
 
@@ -830,7 +872,8 @@ def _designer_primary(
         system_instruction=system_instruction,
         image=ref_image,
         sse_send=sse_send,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
 
 
@@ -1178,6 +1221,64 @@ def _artista_fallback(client, prompt: str, model_id: str = "google/gemini-2.5-fl
             time.sleep(2.0 * (attempt + 1))
 
 
+def _resumir_feedback_para_artista(g_client, feedback: str, origem: str, max_chars: int = 180) -> str:
+    """Usa Gemini Flash para resumir feedback longo em max_chars caracteres."""
+    if len(feedback) <= max_chars:
+        return feedback
+    try:
+        sys_prompt = (
+            f"You are a concise editor. Summarize the following {origem} feedback for an image artist "
+            f"in at most {max_chars} characters in English. Keep only the most critical visual corrections. "
+            "Output only the summary, no preamble."
+        )
+        response = g_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[{"role": "user", "parts": [{"text": feedback}]}],
+            config=types.GenerateContentConfig(
+                system_instruction=sys_prompt,
+                max_output_tokens=80,
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            )
+        )
+        summary = response.text.strip()
+        return summary[:max_chars] if len(summary) > max_chars else summary
+    except Exception:
+        return feedback[:max_chars]
+
+
+def _orquestrador_montar_prompt_artista(
+    g_client,
+    prompt_designer: str,
+    feedback_revisor: str = None,
+    feedback_especialista: str = None,
+    diretiva_lider: str = None
+) -> str:
+    """
+    Orquestrador centraliza e comprime toda informação destinada ao Artista.
+    Produz um prompt único e enxuto para o Codex gerar a imagem.
+    Limite alvo: ~800 chars para performance máxima no Codex.
+    """
+    # Base: prompt do designer já é o núcleo visual da página
+    base = prompt_designer[:500] if len(prompt_designer) > 500 else prompt_designer
+
+    corrections = []
+    if feedback_revisor:
+        resumo = _resumir_feedback_para_artista(g_client, feedback_revisor, "Revisor", max_chars=150)
+        corrections.append(f"Fix: {resumo}")
+    if feedback_especialista:
+        resumo = _resumir_feedback_para_artista(g_client, feedback_especialista, "Specialist", max_chars=150)
+        corrections.append(f"Fix: {resumo}")
+
+    parts = [base]
+    if corrections:
+        parts.append("CORRECTIONS: " + " | ".join(corrections))
+    if diretiva_lider:
+        lider = diretiva_lider[:150] if len(diretiva_lider) > 150 else diretiva_lider
+        parts.append(f"PRIORITY: {lider}")
+
+    return ". ".join(parts)
+
+
 def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
     CODEX_MAX_RETRIES = 2
     models_to_try = []
@@ -1315,7 +1416,8 @@ def _revisor_primary(
         system_instruction="Você é um revisor de quadrinhos detalhista e rigoroso.",
         image=image,
         sse_send=sse_send,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
 
 
@@ -1590,7 +1692,8 @@ def _roteirista_ponderar_roteiro_fallback(client, roteiro: dict, parecer: str) -
         agent_name="Roteirista Ponderador Roteiro",
         prompt=prompt,
         system_instruction=system_instruction,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
     try:
         content = res["content"]
@@ -1636,7 +1739,8 @@ def _artista_ponderar_pagina_primary(client, prompt_designer: str, parecer: str)
         agent_name="Designer Ponderador",
         prompt=prompt,
         system_instruction=system_instruction,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
     try:
         clean_content = clean_json_text(res["content"])
@@ -1765,7 +1869,8 @@ def _especialista_roteiro_primary(
         agent_name="Especialista China Roteiro",
         prompt=prompt_with_files,
         system_instruction=system_instruction,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
 
 def _especialista_roteiro_fallback(
@@ -1892,7 +1997,8 @@ def _especialista_pagina_primary(
         prompt=prompt_with_files,
         system_instruction=system_instruction,
         image=image,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
 
 def _especialista_pagina_fallback(
@@ -2080,7 +2186,8 @@ def _especialista_prompt_primary(
         agent_name="Especialista China Prompt",
         prompt=prompt_with_files,
         system_instruction=system_instruction,
-        fallback_or_fn=native_fallback
+        fallback_or_fn=native_fallback,
+        g_client=client
     )
 
 
@@ -2842,26 +2949,15 @@ def processar_conto_taoista(
             sse_send(f"[Artista] Desenhando a página {i} (Geração {tentativa_revisao})...")
             
             try:
-                # Monta o prompt unificado: base do designer + pareceres de rejeição (revisor e/ou especialista) + diretiva do líder
-                prompt_a_gerar = prompt_designer
-                feedbacks = []
-                if feedback_revisor:
-                    feedbacks.append(f"Reviewer corrections: {feedback_revisor}")
-                if feedback_especialista:
-                    feedbacks.append(f"Specialist corrections: {feedback_especialista}")
-                STYLE_REMINDER = (
-                    "Maintain the full taoist visual style: aged parchment paper texture as full page background, "
-                    "warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), "
-                    "thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured "
-                    "background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, "
-                    "and the 道 red seal stamp in the bottom-right corner."
+                # Orquestrador monta o prompt final para o Artista — único ponto de entrada
+                prompt_a_gerar = _orquestrador_montar_prompt_artista(
+                    g_client=g_client,
+                    prompt_designer=prompt_designer,
+                    feedback_revisor=feedback_revisor,
+                    feedback_especialista=feedback_especialista,
+                    diretiva_lider=diretiva_lider_atual
                 )
-                if feedbacks:
-                    prompt_a_gerar = f"{prompt_designer}. CORRECTIONS REQUIRED: {' | '.join(feedbacks)} — {STYLE_REMINDER}"
-                else:
-                    prompt_a_gerar = f"{prompt_designer}. {STYLE_REMINDER}"
-                if diretiva_lider_atual:
-                    prompt_a_gerar = f"{prompt_a_gerar}. LEADER DIRECTIVE (Max Priority): {diretiva_lider_atual}"
+                sse_send(f"[Orquestrador] Prompt para o Artista ({len(prompt_a_gerar)} chars): {prompt_a_gerar[:120]}...")
                     
                 # 3. Artista desenha (gerar_imagem_artista com fallback em cascata)
                 img_data = gerar_imagem_artista(

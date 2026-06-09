@@ -267,9 +267,12 @@ async def generate_comic(request: Request):
     state.done = False
 
     def sse_send(message: str):
-        event_queue.put(message)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%d/%m %H:%M:%S")
+        stamped = f"[{timestamp}] {message}"
+        event_queue.put(stamped)
         with state.messages_lock:
-            state.messages.append(message)
+            state.messages.append(stamped)
 
     def check_status():
         if state.cancelled:
