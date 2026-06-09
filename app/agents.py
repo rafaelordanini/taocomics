@@ -1369,15 +1369,22 @@ def _orquestrador_montar_prompt_artista(
     prompt_designer: str,
     feedback_revisor: str = None,
     feedback_especialista: str = None,
-    diretiva_lider: str = None
+    diretiva_lider: str = None,
+    estilo_fixo: str = None
 ) -> str:
     """
     Orquestrador centraliza toda informação destinada ao Artista.
     Caminho principal: JSON DSL do Designer (compacto, sem limite de chars).
     Caminho legado (texto livre): compressão via IA com limite de chars.
+    estilo_fixo: campo 'style' extraído da página 1 para manter consistência visual.
     """
     dsl = _parse_designer_dsl(prompt_designer)
     if dsl is not None:
+        # Fixa o estilo da página 1 em todas as páginas seguintes
+        if estilo_fixo and not dsl.get("style"):
+            dsl["style"] = estilo_fixo
+        elif estilo_fixo:
+            dsl["style"] = estilo_fixo  # sobrescreve para garantir consistência
         return _montar_prompt_artista_dsl(g_client, dsl, feedback_revisor, feedback_especialista, diretiva_lider)
 
     # Legado: prompt em texto livre (compatibilidade com prompts antigos cacheados)
@@ -1477,32 +1484,50 @@ def _revisor_primary(
     arquivo_b64: str = None,
     arquivo_mime: str = None,
     titulo: str = None,
-    sse_send: Callable[[str], None] = None
+    sse_send: Callable[[str], None] = None,
+    tentativa: int = 1
 ) -> dict:
+    # Flexibilidade progressiva: tentativa 1 rigoroso, 2 flexível em estilo, 3+ só gramática e título pág1
+    if tentativa >= 3:
+        rigor_estilo = (
+            "Nesta tentativa avançada, seja MUITO flexível com aspectos visuais e de layout. "
+            "APROVE a imagem a menos que haja erro gramatical grave em português nos textos visíveis"
+            + (f" ou ausência/erro no título '{titulo}' na página 1" if num_pagina == 1 and titulo else "") + ". "
+            "Ignore imperfeições de estilo, número de painéis ou composição."
+        )
+    elif tentativa == 2:
+        rigor_estilo = (
+            "Nesta segunda tentativa, seja flexível com estilo visual, composição e layout de painéis. "
+            "Foque apenas em erros graves de gramática portuguesa nos textos visíveis"
+            + (f" e na presença correta do título '{titulo}'" if num_pagina == 1 and titulo else "") + "."
+        )
+    else:
+        rigor_estilo = "Seja rigoroso em todos os critérios."
+
     prompt_text = (
-        f"Você é um revisor de quadrinhos detalhista e rigoroso. Sua tarefa é analisar a imagem de página de quadrinho anexa e verificar se ela atende às exigências do Designer Oriental:\n\n"
-        f"Instruções do Designer: {prompt_designer}\n"
-        f"Página: {num_pagina} de {total_paginas}\n\n"
-        f"Verificações obrigatórias:\n"
-        f"1. Estilo Visual: Estilo clássico de pintura em nanquim chinesa (ink wash painting), traços fluidos de pincel, névoa e montanhas taoístas.\n"
-        f"2. Caixas de texto/balões de diálogo: Verifique se existem balões de diálogo e caixas de narração adequados na página. Como as IAs de geração costumam criar textos ilegíveis, você deve aprovar a imagem se as caixas de texto/balões de diálogo estiverem presentes e bem dispostas. Não rejeite a imagem por causa de letras borradas ou ilegíveis, desde que os balões e caixas existam e o layout visual represente o roteiro.\n"
+        f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n\n"
+        f"Instruções do Designer: {prompt_designer}\n\n"
+        f"Nível de rigor desta revisão (tentativa {tentativa}): {rigor_estilo}\n\n"
+        f"Verificações:\n"
+        f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos, névoa e montanhas taoístas.\n"
+        f"2. Caixas de texto/balões: Aprove se existirem e estiverem bem dispostos, mesmo com texto ilegível.\n"
     )
     if titulo:
-        prompt_text += f"3. Título (Pág 1): Se esta for a página 1, DEVE haver um título destacado no topo da imagem contendo exatamente o texto em português: '{titulo}'. Não aprove se o título estiver incorreto, truncado, ausente ou se for outro título diferente do estabelecido (por exemplo, se o artista desenhar algo diferente de '{titulo}').\n"
+        prompt_text += f"3. Título (Pág 1): Se for página 1, DEVE conter exatamente '{titulo}' no topo.\n"
     else:
-        prompt_text += "3. Título (Pág 1): Se esta for a página 1, DEVE haver um título destacado no topo da imagem.\n"
-        
+        prompt_text += "3. Título (Pág 1): Se for página 1, deve haver um título no topo.\n"
+
     prompt_text += (
-        f"4. Arte Final (Última Pág): Se esta for a página final (página {total_paginas}), a imagem DEVE ser uma arte própria que evidencie de forma poética e espiritual o encerramento do conto.\n"
+        f"4. Arte Final: Se for a última página ({total_paginas}), deve evidenciar poeticamente o encerramento.\n"
     )
     if geral:
-        prompt_text += f"5. Instruções Gerais de Auditoria do Revisor:\n{geral}\n"
+        prompt_text += f"5. Instruções Gerais:\n{geral}\n"
     if especifica:
-        prompt_text += f"6. Instrução Específica de Auditoria do Revisor (PRIORIDADE ABSOLUTA - Suplanta as gerais se houver conflito):\n{especifica}\n"
-        
+        prompt_text += f"6. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
+
     prompt_text += (
-        "\nResponda APENAS 'APROVADO' se a página estiver adequada.\n"
-        "Caso haja erros graves em relação a estas diretrizes, descreva detalhadamente os erros (em português) em um texto claro para que o artista ajuste o prompt e redesenhe."
+        "\nResponda APENAS 'APROVADO' se adequada. "
+        "Caso haja erros graves, descreva-os detalhadamente em português para o artista corrigir."
     )
     
     def native_fallback():
@@ -1555,7 +1580,8 @@ def _revisor_fallback(
     arquivo_mime: str = None,
     g_client = None,
     titulo: str = None,
-    sse_send: Callable[[str], None] = None
+    sse_send: Callable[[str], None] = None,
+    tentativa: int = 1
 ) -> dict:
     backup_models = [
         "google/gemini-2.5-flash",
@@ -1566,32 +1592,42 @@ def _revisor_fallback(
     ]
     if image is not None:
         backup_models = [m for m in backup_models if m != "deepseek/deepseek-chat"]
-    
+
+    if tentativa >= 3:
+        rigor_estilo = (
+            "MUITO flexível: aprove salvo erro gramatical grave em português"
+            + (f" ou ausência do título '{titulo}' na página 1" if num_pagina == 1 and titulo else "") + "."
+        )
+    elif tentativa == 2:
+        rigor_estilo = (
+            "Flexível em estilo/layout. Foque em erros gramaticais graves em português"
+            + (f" e presença do título '{titulo}'" if num_pagina == 1 and titulo else "") + "."
+        )
+    else:
+        rigor_estilo = "Rigoroso em todos os critérios."
+
     if image is not None:
         prompt_text = (
-            f"Você é um revisor de quadrinhos detalhista e rigoroso. Sua tarefa é analisar a imagem de página de quadrinho anexa e verificar se ela atende às exigências do Designer Oriental:\n\n"
-            f"Instruções do Designer: {prompt_designer}\n"
-            f"Página: {num_pagina} de {total_paginas}\n\n"
-            f"Verificações obrigatórias:\n"
-            f"1. Estilo Visual: Estilo clássico de pintura em nanquim chinesa (ink wash painting), traços fluidos de pincel, névoa e montanhas taoístas.\n"
-            f"2. Caixas de texto/balões de diálogo: Verifique se existem balões de diálogo e caixas de narração adequados na página. Como as IAs de geração costumam criar textos ilegíveis, você deve aprovar a imagem se as caixas de texto/balões de diálogo estiverem presentes e bem dispostas. Não rejeite a imagem por causa de letras borradas ou ilegíveis, desde que os balões e caixas existam e o layout visual represente o roteiro.\n"
+            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}. Rigor (tentativa {tentativa}): {rigor_estilo}\n\n"
+            f"Instruções do Designer: {prompt_designer}\n\n"
+            f"Verificações:\n"
+            f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos.\n"
+            f"2. Balões/caixas de texto: Aprove se existirem, mesmo com texto ilegível.\n"
         )
         if titulo:
-            prompt_text += f"3. Título (Pág 1): Se esta for a página 1, DEVE haver um título destacado no topo da imagem contendo exatamente o texto em português: '{titulo}'. Não aprove se o título estiver incorreto, truncado, ausente ou se for outro título diferente do estabelecido (por exemplo, se o artista desenhar algo diferente de '{titulo}').\n"
+            prompt_text += f"3. Título (Pág 1): Deve conter exatamente '{titulo}' no topo.\n"
         else:
-            prompt_text += "3. Título (Pág 1): Se esta for a página 1, DEVE haver um título destacado no topo da imagem.\n"
-            
-        prompt_text += (
-            f"4. Arte Final (Última Pág): Se esta for a página final (página {total_paginas}), a imagem DEVE ser uma arte própria que evidencie de forma poética e espiritual o encerramento do conto.\n"
-        )
+            prompt_text += "3. Título (Pág 1): Deve haver título no topo.\n"
+
+        prompt_text += f"4. Arte Final: Última página deve evidenciar poeticamente o encerramento.\n"
         if geral:
-            prompt_text += f"5. Instruções Gerais de Auditoria do Revisor:\n{geral}\n"
+            prompt_text += f"5. Instruções Gerais:\n{geral}\n"
         if especifica:
-            prompt_text += f"6. Instrução Específica de Auditoria do Revisor (PRIORIDADE ABSOLUTA - Suplanta as gerais se houver conflito):\n{especifica}\n"
-            
+            prompt_text += f"6. Instrução Específica (PRIORIDADE):\n{especifica}\n"
+
         prompt_text += (
-            "\nResponda APENAS 'APROVADO' se a página estiver adequada.\n"
-            "Caso haja erros graves em relação a estas diretrizes, descreva detalhadamente os erros (em português) em um texto claro para que o artista ajuste o prompt e redesenhe."
+            "\nResponda APENAS 'APROVADO' se adequada. "
+            "Caso haja erros graves, descreva-os detalhadamente em português."
         )
         
         attachments = []
@@ -2862,9 +2898,12 @@ def processar_conto_taoista(
                     roteiro_finalizado = True
         
     paginas_salvas = []
-    
-    # Loop de páginas
-    for i, pagina_script in enumerate(paginas, start=1):
+    paginas_salvas_lock = threading.Lock()
+    pagina1_aprovada: Image.Image = None  # referência visual para manter consistência entre páginas
+    estilo_pagina1: str = None  # campo 'style' do JSON DSL da página 1 para fixar nas demais
+
+    def _processar_pagina(i, pagina_script):
+        nonlocal pagina1_aprovada, estilo_pagina1
         if check_status:
             check_status()
         sse_send(f"[Sistema] === INICIANDO PROCESSAMENTO DA PÁGINA {i} de {total_paginas} ===")
@@ -2912,6 +2951,7 @@ def processar_conto_taoista(
         diretiva_lider_atual = None
         feedback_revisor = None
         feedback_especialista = None
+        feedbacks_cumulativos = []  # histórico de feedbacks para evitar erros repetidos
         imagem_final = None
         
         # Caminhos de arquivos da imagem final
@@ -2942,7 +2982,6 @@ def processar_conto_taoista(
                 except Exception as e:
                     logging.warning(f"[drive_upload] Falha ao enviar imagem do cache {filepath}: {e}")
                 sse_send(f"[Sistema] Página {i} carregada com sucesso do cache e copiada para '{filepath}'")
-                paginas_salvas.append(filename)
                 revisao_aprovada = True
             except Exception as e:
                 sse_send(f"[Sistema] Erro ao carregar imagem cacheada da página {i}: {str(e)}. Redesenhando...")
@@ -3072,15 +3111,23 @@ def processar_conto_taoista(
             
             try:
                 # Orquestrador monta o prompt final para o Artista — único ponto de entrada
+                # Usa feedback cumulativo para evitar que o Artista repita erros anteriores
+                feedback_acumulado_revisor = (" | Tentativas anteriores: " + " | ".join(feedbacks_cumulativos)) if feedbacks_cumulativos else None
+                feedback_final_revisor = (feedback_revisor or "") + (feedback_acumulado_revisor or "") if (feedback_revisor or feedback_acumulado_revisor) else None
+
                 prompt_a_gerar = _orquestrador_montar_prompt_artista(
                     g_client=g_client,
                     prompt_designer=prompt_designer,
-                    feedback_revisor=feedback_revisor,
+                    feedback_revisor=feedback_final_revisor,
                     feedback_especialista=feedback_especialista,
-                    diretiva_lider=diretiva_lider_atual
+                    diretiva_lider=diretiva_lider_atual,
+                    estilo_fixo=estilo_pagina1 if i > 1 else None
                 )
                 sse_send(f"[Orquestrador] Prompt para o Artista ({len(prompt_a_gerar)} chars): {prompt_a_gerar[:120]}...")
-                    
+
+                # Artista recebe página 1 aprovada como referência visual para páginas seguintes
+                ref_img_artista = pagina1_aprovada if i > 1 and pagina1_aprovada else None
+
                 # 3. Artista desenha (gerar_imagem_artista com fallback em cascata)
                 img_data = gerar_imagem_artista(
                     o_client=o_client,
@@ -3090,7 +3137,8 @@ def processar_conto_taoista(
                     primary_model=artista_model,
                     sse_send=sse_send,
                     poe_key=poe_key,
-                    modelos_paths=modelos_paths
+                    modelos_paths=modelos_paths,
+                    ref_image=ref_img_artista
                 )
                 
                 if isinstance(img_data, str):
@@ -3126,15 +3174,15 @@ def processar_conto_taoista(
                     rev_esp_com_lider = rev_especifica
                     if diretiva_lider_atual:
                         rev_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {rev_especifica or ''}"
-                    return _revisor_primary(g_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, rev_arquivo_b64, rev_arquivo_mime, titulo=titulo)
-                    
+                    return _revisor_primary(g_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, rev_arquivo_b64, rev_arquivo_mime, titulo=titulo, tentativa=tentativa_revisao)
+
                 def revisor_fallback_call():
                     rev_esp_com_lider = rev_especifica
                     if diretiva_lider_atual:
                         rev_esp_com_lider = f"(DIRETIVA DO LÍDER: {diretiva_lider_atual}) {rev_especifica or ''}"
                     try:
                         sse_send("[Revisor] Acionando backups no OpenRouter...")
-                        return _revisor_fallback(or_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, rev_arquivo_b64, rev_arquivo_mime, titulo=titulo, sse_send=sse_send)
+                        return _revisor_fallback(or_client, imagem_final, prompt_designer, i, total_paginas, rev_geral, rev_esp_com_lider, rev_arquivo_b64, rev_arquivo_mime, titulo=titulo, sse_send=sse_send, tentativa=tentativa_revisao)
                     except Exception as e_or:
                         if ant_client:
                             sse_send(f"[Revisor] Backups do OpenRouter falharam: {str(e_or)}. Acionando Claude 3.5 Sonnet como último recurso...")
@@ -3179,6 +3227,9 @@ def processar_conto_taoista(
                 if not revisor_ok:
                     revisao_aprovada = False
                     feedback_revisor = resultado_revisao
+                    # Acumula feedbacks para evitar erros repetidos nas próximas tentativas
+                    resumo_curto = resultado_revisao[:200] if len(resultado_revisao) > 200 else resultado_revisao
+                    feedbacks_cumulativos.append(f"T{tentativa_revisao}: {resumo_curto}")
                     _salvar_imagem_rejeitada(imagem_final, tale_dir, i, f"rejeitada_revisor_tentativa_{tentativa_revisao}", model_id=model_used)
                     sse_send(f"[Sistema] Página {i} reprovada pelo Revisor! Feedback registrado para o próximo prompt ao Artista.")
                 else:
@@ -3306,7 +3357,6 @@ def processar_conto_taoista(
                 except Exception as e:
                     logging.warning(f"[drive_upload] Falha ao enviar imagem {filepath}: {e}")
                 sse_send(f"[Sistema] Página {i} salva em '{filepath}' e copiada para a pasta do conto.")
-                paginas_salvas.append(filename)
                 _registrar_modelo_utilizado(tale_dir, filename, "aprovada", model_used)
                 try:
                     filepath_temp = filepath.replace(".png", "_temp.png")
@@ -3316,17 +3366,51 @@ def processar_conto_taoista(
                     pass
             except Exception as e:
                 sse_send(f"[Sistema] Erro ao salvar imagem da página {i}: {str(e)}")
+
+        # Após página 1 aprovada: captura referência visual e estilo para consistência
+        if i == 1 and imagem_final:
+            pagina1_aprovada = imagem_final.copy()
+            dsl_p1 = _parse_designer_dsl(prompt_designer)
+            if dsl_p1 and dsl_p1.get("style"):
+                estilo_pagina1 = dsl_p1["style"]
+                sse_send(f"[Orquestrador] Estilo da página 1 capturado e fixado para as demais: \"{estilo_pagina1[:80]}...\"")
+            sse_send("[Orquestrador] Página 1 aprovada — usada como referência visual para todas as páginas seguintes.")
         elif not imagem_final and not os.path.exists(image_path_in_tale):
             sse_send(f"[Sistema] ERRO: Imagem final para página {i} não disponível.")
             
-        # 5. Artista reporta término ao Designer Oriental e questiona se há mais
+        # 5. Artista reporta término
         if i < total_paginas:
             sse_send(f"[Artista] Terminei a página {i}. Há alguma outra página para eu desenhar?")
             sse_send(f"[Designer Oriental] Sim, vamos para a página {i + 1}. Enviando o próximo prompt...")
         else:
             sse_send(f"[Artista] Terminei a página {i}. Há alguma outra página para eu desenhar?")
             sse_send("[Designer Oriental] Não há mais páginas. Esse foi o encerramento do conto!")
-            
+
+        return filename if imagem_final or os.path.exists(image_path_in_tale) else None
+
+    # Página 1 sempre sequencial (precisamos da referência visual/estilo antes das demais)
+    result_p1 = _processar_pagina(1, paginas[0])
+    if result_p1:
+        paginas_salvas.append(result_p1)
+
+    # Páginas 2+ em paralelo (até 3 simultâneas para não sobrecarregar a VM)
+    if len(paginas) > 1:
+        import concurrent.futures
+        MAX_WORKERS = 3
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {
+                executor.submit(_processar_pagina, i + 1, pagina_script): i + 1
+                for i, pagina_script in enumerate(paginas[1:], start=1)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                page_num = futures[future]
+                try:
+                    result = future.result()
+                    if result:
+                        paginas_salvas.append(result)
+                except Exception as e:
+                    sse_send(f"[Sistema] Erro na página {page_num}: {str(e)}")
+
     sse_send(f"[Sistema] Finalizado! Todas as {total_paginas} páginas salvas no diretório com sucesso.")
     return paginas_salvas
 
