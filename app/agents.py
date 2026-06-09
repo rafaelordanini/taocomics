@@ -950,53 +950,67 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
         headers["Authorization"] = f"Bearer {worker_token}"
 
     if sse_send:
-        sse_send("[Artista (Desenho)] Aguardando geração da imagem pelo Codex... (pode levar até 5 minutos)")
+        sse_send("[Artista (Desenho)] Enviando job para o Codex... (geração assíncrona)")
 
-    import threading
+    # Envia o job e recebe job_id imediatamente (evita timeout do Cloudflare Tunnel)
+    try:
+        submit_resp = httpx.post(
+            f"{worker_url}/generate-image",
+            json={"prompt": prompt},
+            headers=headers,
+            timeout=30.0
+        )
+    except Exception as e:
+        raise RuntimeError(f"Erro ao enviar job para o Codex: {e}")
 
-    MAX_WAIT = 360  # 6 minutos — um pouco acima do timeout do worker (5min)
-    result_container = {}
-    error_container = {}
+    if submit_resp.status_code != 200:
+        raise RuntimeError(f"Codex worker retornou erro {submit_resp.status_code}: {submit_resp.text[:300]}")
 
-    def do_request():
-        try:
-            response = httpx.post(
-                f"{worker_url}/generate-image",
-                json={"prompt": prompt},
-                headers=headers,
-                timeout=370.0
-            )
-            result_container["response"] = response
-        except Exception as e:
-            error_container["error"] = e
+    job_id = submit_resp.json().get("job_id")
+    if not job_id:
+        raise RuntimeError("Codex worker não retornou job_id")
 
-    thread = threading.Thread(target=do_request, daemon=True)
-    thread.start()
+    if sse_send:
+        sse_send("[Artista (Desenho)] Job enviado! Aguardando geração da imagem pelo Codex... (pode levar até 5 minutos)")
 
+    MAX_WAIT = 360
     elapsed = 0
-    interval = 30
-    while thread.is_alive():
-        thread.join(timeout=interval)
-        if thread.is_alive():
-            elapsed += interval
-            mins = elapsed // 60
-            secs = elapsed % 60
-            if elapsed >= MAX_WAIT:
-                if sse_send:
-                    sse_send(f"[Artista (Desenho)] ⚠️ Codex travou após {mins}m{secs:02d}s sem resposta. Reinicie o worker na VM com: bash ~/codex-worker/restart.sh")
-                raise RuntimeError(f"Codex não respondeu após {MAX_WAIT}s. Worker travado — reinicie o serviço na VM.")
+    poll_interval = 15
+
+    while elapsed < MAX_WAIT:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+        mins = elapsed // 60
+        secs = elapsed % 60
+
+        try:
+            poll_resp = httpx.get(
+                f"{worker_url}/job/{job_id}",
+                headers=headers,
+                timeout=20.0
+            )
+        except Exception as e:
+            if sse_send:
+                sse_send(f"[Artista (Desenho)] Erro ao verificar status do job: {e}. Tentando novamente...")
+            continue
+
+        if poll_resp.status_code != 200:
+            if sse_send:
+                sse_send(f"[Artista (Desenho)] Status inesperado ao verificar job: {poll_resp.status_code}")
+            continue
+
+        job = poll_resp.json()
+        status = job.get("status")
+
+        if status == "done":
+            return {"url": None, "b64_json": job["b64_json"]}
+        elif status == "error":
+            raise RuntimeError(f"Codex falhou: {job.get('error', 'erro desconhecido')}")
+        else:
             if sse_send:
                 sse_send(f"[Artista (Desenho)] Aguardando Codex... ({mins}m{secs:02d}s decorridos — normal para geração de imagem)")
 
-    if "error" in error_container:
-        raise error_container["error"]
-
-    response = result_container["response"]
-    if response.status_code != 200:
-        raise RuntimeError(f"Codex worker retornou erro {response.status_code}: {response.text[:300]}")
-
-    data = response.json()
-    return {"url": None, "b64_json": data["b64_json"]}
+    raise RuntimeError(f"Codex não respondeu após {MAX_WAIT}s. Worker travado — reinicie o serviço na VM com: bash ~/codex-worker/restart.sh")
 
 
 def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None, sse_send=None) -> dict:
