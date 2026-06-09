@@ -7,8 +7,8 @@
 - **NÃO NUMERE OS QUADRINHOS NEM AS PÁGINAS**: É expressamente proibido incluir qualquer tipo de numeração na imagem. Não adicione números identificadores de quadros/painéis (ex: "1", "2", "3"), números de página (ex: "Página 1", "Pág 2"), ou marcadores visuais numéricos equivalentes. Toda a arte deve ser limpa de números.
 
 [PRIORIDADE ABSOLUTA Nº 2 - TÍTULO SEGURO E SEM CORTES NA PÁGINA 1]
-- **O TÍTULO DEVE SER POSICIONADO COM SEGURANÇA E NUNCA SER CORTADO**: Na primeira página, o título principal do conto deve ser desenhado de forma totalmente visível, posicionado com uma margem de segurança clara (deixe pelo menos 15% de espaço livre no topo da página antes do título, e pelo menos 15% de margem livre nas laterais esquerda e direita) abaixo do limite físico superior da imagem.
-- **PROIBIÇÃO DE TÍTULO COLADO OU CORTADO NO TOPO OU LATERAIS**: É terminantemente proibido que o título, suas letras, acentos, molduras, faixas decorativas ou selos vermelhos fiquem colados no topo ou nas bordas laterais da imagem de modo que as margens cortem qualquer elemento. Toda a caligrafia e elementos decorativos do título devem estar totalmente visíveis, inteiramente legíveis e com um espaço nítido de respiro em todas as bordas.
+- **O TÍTULO DEVE SER POSICIONADO COM SEGURANÇA E NUNCA SER CORTADO**: Na primeira página, o título principal do conto deve ser desenhado de forma totalmente visível, posicionado abaixo do limite físico superior da imagem com espaço de respiro adequado.
+- **PROIBIÇÃO DE TÍTULO COLADO OU CORTADO NO TOPO OU LATERAIS**: É terminantemente proibido que o título, suas letras, acentos, molduras, faixas decorativas ou selos vermelhos fiquem colados no topo ou nas bordas laterais da imagem de modo que as margens cortem qualquer elemento. Toda a caligrafia e elementos decorativos do título devem estar totalmente visíveis e inteiramente legíveis.
 
 ESTILO VISUAL OBRIGATÓRIO — REFERÊNCIA DE ALTA FIDELIDADE
 Para que as páginas geradas se pareçam com o estilo de referência do projeto, TODOS os seguintes elementos visuais são obrigatórios em cada página:
@@ -57,9 +57,8 @@ Não numerar páginas;
 Não numerar quadrinhos;
 Não inserir marcadores numéricos nos painéis;
 Não adicionar referências visuais como "Página 1", "Página 2", "Quadro 1", "Painel 1" ou equivalentes.
-Área segura (Margem de Segurança Crítica de 15%)
-- **[CRÍTICO - LIMITE DE SEGURANÇA DE 15%]**: Todos os textos, diálogos, balões de fala, caixas de texto, legendas e elementos gráficos importantes devem ser posicionados inteiramente dentro da zona de segurança central da página.
-- **MARGEM OBRIGATÓRIA**: Deve haver uma margem vazia e de respiro limpa de pelo menos 15% nas quatro bordas físicas da imagem (esquerda, direita, superior e inferior). Nenhum texto ou balão pode encostar ou ficar a menos de 15% de distância de qualquer borda, evitando que o corte físico ou a diagramação mutile as letras.
+Área segura
+- Todos os textos, diálogos, balões de fala, caixas de texto, legendas e elementos gráficos importantes devem ser posicionados de forma que nenhum elemento importante seja cortado pelas bordas da imagem.
 Consistência visual
 Todas as páginas do mesmo conto devem manter:
 A mesma paleta de cores;
