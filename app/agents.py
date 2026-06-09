@@ -763,6 +763,33 @@ def _roteirista_fallback(client, conto: str, geral: str = None, especifica: str 
 # 2. Agente Designer Oriental
 # --------------------------
 
+# JSON DSL: linguagem estruturada de comunicação Designer -> Orquestrador -> Artista.
+# Substitui o prompt em texto livre por um formato compacto e sem ambiguidade,
+# que os modelos de imagem (Codex/gpt-image-2) processam de forma determinística.
+DESIGNER_JSON_SCHEMA = (
+    "Responda APENAS com um objeto JSON puro (sem markdown, sem ```), seguindo EXATAMENTE este schema:\n"
+    "{\n"
+    '  "page": <número da página (int)>,\n'
+    '  "is_final": <true se for a última página, senão false>,\n'
+    '  "title": "<APENAS na página 1: o título EXATO do conto; senão omita o campo>",\n'
+    '  "style": "<descritores de estilo visual concisos em inglês, separados por vírgula>",\n'
+    '  "panels": [\n'
+    "    {\n"
+    '      "n": <número do quadrinho (int)>,\n'
+    '      "shape": "<panoramic|wide|square|tall|small> (forma/tamanho do painel)",\n'
+    '      "scene": "<descrição visual da cena em inglês: cenário, luz, atmosfera>",\n'
+    '      "characters": ["<personagem + ação + expressão em inglês>", ...],\n'
+    '      "caption": "<texto da caixa de narração em português, ou omita>",\n'
+    '      "bubble": "<texto do balão de fala em português, ou omita>"\n'
+    "    }\n"
+    "  ]\n"
+    "}\n"
+    "Regras: inclua TODOS os quadrinhos do roteiro (6 a 10 painéis). Seja detalhista em 'scene' e "
+    "'characters', mas evite repetir descritores de estilo em cada painel (eles ficam em 'style'). "
+    "Preserve os textos de balões/narração fielmente do roteiro."
+)
+
+
 def _designer_primary(
     client,
     pagina_script: dict,
@@ -788,13 +815,12 @@ def _designer_primary(
     if ref_image:
         prompt += (
             "INSTRUÇÃO IMPORTANTE DE ESTILO: Analise a imagem de referência anexa. "
-            "Você deve extrair o estilo artístico, paleta de cores, disposição dos painéis e "
+            "Extraia o estilo artístico, paleta de cores, disposição dos painéis e "
             "o padrão/design de escrita do título (e das caixas de texto em geral) desta imagem modelo. "
-            "Crie o prompt de geração de imagem in inglês de forma que o gerador de imagem (DALL-E 3) siga esse mesmo padrão visual "
-            "e estilo de título/layout ao desenhar a página atual."
+            "Reflita esse mesmo padrão visual no campo 'style' e na estrutura de painéis do JSON DSL."
         )
     else:
-        prompt += "Crie o prompt de imagem em inglês baseado nas instruções de estilo clássico em nanquim chinesa."
+        prompt += "Estruture a página em JSON DSL baseado nas instruções de estilo clássico em nanquim chinesa."
         
     if geral:
         prompt += f"\nINSTRUÇÕES GERAIS DO DESIGNER ORIENTAL:\n{geral}"
@@ -814,20 +840,18 @@ def _designer_primary(
         
     system_instruction = (
         "Você é um designer de arte oriental tradicional e especialista em quadrinhos asiáticos (manhua, manga, paintings clássicas de nanquim e guache taoístas). "
-        "Sua tarefa é receber o roteiro de uma página específica de um quadrinho taoísta e criar um prompt de geração de imagem detalhado e otimizado em inglês para essa página inteira. "
-        "O prompt deve instruir o gerador a criar uma página de quadrinhos com vários painéis, mantendo a consistência de estilo. "
-        "Instruções de estilo base: Pintura chinesa em nanquim (traditional Chinese ink wash painting style), traços fluidos de pincel, cores suaves e místicas, elements da natureza (névoa, montanhas, bambus), atmosfera espiritual e filosófica. "
-        "O prompt deve descrever detalhadamente o layout dos quadrinhos (ex: 'A comic book page with 6 panels in traditional Chinese ink wash painting style...'). "
+        "Sua tarefa é receber o roteiro de uma página específica de um quadrinho taoísta e estruturar a página inteira em um JSON DSL detalhado. "
+        "Estilo base (campo 'style'): traditional Chinese ink wash painting, fluid brushstrokes, soft mystical colors, nature elements (mist, mountains, bamboo), spiritual taoist atmosphere. "
         "Instruções Especiais:\n"
     )
     if titulo:
-        system_instruction += f"- Se for a primeira página (página número {num_pagina} igual a 1), inclua no prompt que o título principal da HQ deve ser EXATAMENTE '{titulo}' (ex: 'with a beautiful, stylized title banner at the top of the page with the exact text \"{titulo}\" written in Portuguese'). Não altere de forma alguma o nome do título.\n"
+        system_instruction += f"- Na página 1, o campo 'title' deve ser EXATAMENTE '{titulo}' (texto em português). Não altere de forma alguma o nome do título.\n"
     else:
-        system_instruction += f"- Se for a primeira página (página número {num_pagina} igual a 1), inclua no prompt que deve haver um título elegante escrito no topo (ex: 'with a beautiful, stylized title banner at the top of the page').\n"
-        
+        system_instruction += f"- Na página 1, inclua um 'title' elegante no topo.\n"
+
     system_instruction += (
-        f"- Se for a página final (página número {num_pagina} igual ao total {total_paginas}), descreva uma arte própria e poética que evidencie claramente o fim de um conto, com elementos que simbolizam o encerramento espiritual.\n"
-        "Responda apenas com o prompt em inglês, sem outras explicações ou markdown."
+        f"- Se for a página final (página {num_pagina} igual ao total {total_paginas}), marque 'is_final': true e descreva uma cena poética que evidencie o encerramento espiritual do conto.\n\n"
+        + DESIGNER_JSON_SCHEMA
     )
     
     def native_fallback():
@@ -851,7 +875,7 @@ def _designer_primary(
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                max_output_tokens=2048
+                max_output_tokens=4096
             )
         )
         content = extract_content_from_gemini(response)
@@ -903,31 +927,30 @@ def _designer_fallback(
     artist_spec_addition = f"\nArtist specific (priority) instruction: {artista_especifica}" if artista_especifica else ""
     
     if titulo:
-        title_line = f"- Se for página 1, adicione o título do roteiro que deve ser EXATAMENTE '{titulo}' destacado no topo da imagem ('with a stylized title banner at the top with the exact text \"{titulo}\" written in Portuguese').\n"
+        title_line = f"- Na página 1, o campo 'title' deve ser EXATAMENTE '{titulo}' (em português).\n"
     else:
-        title_line = f"- Se for página 1, adicione um título destacado no topo ('with a stylized title banner at the top').\n"
-        
+        title_line = f"- Na página 1, inclua um 'title' destacado no topo.\n"
+
     prompt = (
         f"Você é um designer de arte oriental e especialista em manhua/pintura em nanquim. "
-        f"Gere um prompt de imagem em inglês para a página {num_pagina} (total de páginas: {total_paginas}) com o seguinte roteiro de quadrinhos:\n\n{script_str}\n\n"
+        f"Estruture a página {num_pagina} (total de páginas: {total_paginas}) em JSON DSL com o seguinte roteiro de quadrinhos:\n\n{script_str}\n\n"
         f"Diretrizes:\n"
-        f"- Estilo: Traditional Chinese ink wash painting, fluid brushstrokes, mystical colors, mist, taoist atmosphere.\n"
-        f"- Layout: Comic book page layout with panels.\n"
+        f"- Estilo (campo 'style'): Traditional Chinese ink wash painting, fluid brushstrokes, mystical colors, mist, taoist atmosphere.\n"
         f"{title_line}"
-        f"- Se for a última página, adicione elementos que mostrem poeticamente o fim do conto ('indicates the poetic end of a tale').\n"
-        f"Nota de estilo: Siga um padrão estético de títulos e ilustrações harmoniosas clássicas.{instructions_addition}{specific_addition}{artist_gen_addition}{artist_spec_addition}\n\n"
-        f"Responda APENAS com o prompt em inglês."
+        f"- Se for a última página, marque 'is_final': true com elementos que mostrem poeticamente o fim do conto.\n"
+        f"{instructions_addition}{specific_addition}{artist_gen_addition}{artist_spec_addition}\n\n"
+        + DESIGNER_JSON_SCHEMA
     )
-    
+
     attachments = []
     if arquivo_b64 and arquivo_mime:
         attachments.append((arquivo_b64, arquivo_mime))
     if art_arquivo_b64 and art_arquivo_mime:
         attachments.append((art_arquivo_b64, art_arquivo_mime))
-        
+
     messages = _format_openrouter_payload(
         prompt=prompt,
-        system_instruction="Você é um designer oriental. Escreva apenas o prompt em inglês.",
+        system_instruction="Você é um designer oriental. Responda APENAS com o objeto JSON DSL puro.",
         images=[ref_image] if ref_image else None,
         attachments=attachments
     )
@@ -948,7 +971,7 @@ def _designer_fallback(
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=2048
+                max_tokens=4096
             )
             content = extract_content_from_openai(response)
             if sse_send:
@@ -1297,6 +1320,50 @@ def _comprimir_prompt_designer(g_client, prompt_designer: str) -> str:
     return prompt_designer[:MAX_PROMPT_ARTISTA]
 
 
+def _parse_designer_dsl(prompt_designer: str):
+    """Tenta interpretar o prompt do Designer como JSON DSL. Retorna dict ou None."""
+    try:
+        dsl = json.loads(clean_json_text(prompt_designer))
+        if isinstance(dsl, dict) and isinstance(dsl.get("panels"), list) and dsl["panels"]:
+            return dsl
+    except Exception:
+        pass
+    return None
+
+
+def _montar_prompt_artista_dsl(
+    g_client,
+    dsl: dict,
+    feedback_revisor: str = None,
+    feedback_especialista: str = None,
+    diretiva_lider: str = None
+) -> str:
+    """
+    Monta o prompt final para o Artista a partir do JSON DSL do Designer.
+    Injeta correções dos revisores no campo 'fixes' e serializa de forma compacta.
+    Sem limite de caracteres — o formato JSON já é naturalmente enxuto.
+    """
+    fixes = []
+    if feedback_revisor:
+        fixes.append(_resumir_feedback_para_artista(g_client, feedback_revisor, "Revisor", max_chars=150))
+    if feedback_especialista:
+        fixes.append(_resumir_feedback_para_artista(g_client, feedback_especialista, "Specialist", max_chars=150))
+    if diretiva_lider:
+        fixes.append("PRIORITY: " + (diretiva_lider[:150] if len(diretiva_lider) > 150 else diretiva_lider))
+    if fixes:
+        dsl["fixes"] = fixes
+
+    # JSON compacto (sem espaços supérfluos) como linguagem de comunicação com o Artista
+    spec = json.dumps(dsl, ensure_ascii=False, separators=(",", ":"))
+    instrucao = (
+        "Render this comic page from the structured JSON spec below. "
+        "Draw every panel in 'panels' in order, using the shared 'style'. "
+        "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
+        "Apply all items in 'fixes' as corrections. JSON spec:\n"
+    )
+    return instrucao + spec
+
+
 def _orquestrador_montar_prompt_artista(
     g_client,
     prompt_designer: str,
@@ -1306,12 +1373,15 @@ def _orquestrador_montar_prompt_artista(
 ) -> str:
     """
     Orquestrador centraliza toda informação destinada ao Artista.
-    Comprime o prompt do Designer de forma inteligente preservando todos os quadrinhos.
-    Feedbacks e diretivas também são comprimidos.
+    Caminho principal: JSON DSL do Designer (compacto, sem limite de chars).
+    Caminho legado (texto livre): compressão via IA com limite de chars.
     """
-    base = _comprimir_prompt_designer(g_client, prompt_designer)
+    dsl = _parse_designer_dsl(prompt_designer)
+    if dsl is not None:
+        return _montar_prompt_artista_dsl(g_client, dsl, feedback_revisor, feedback_especialista, diretiva_lider)
 
-    # Lembrete estrutural mínimo
+    # Legado: prompt em texto livre (compatibilidade com prompts antigos cacheados)
+    base = _comprimir_prompt_designer(g_client, prompt_designer)
     parts = [base, "Draw 6-10 comic panels per page with varied layout. Include speech bubbles and narrative boxes."]
 
     corrections = []
