@@ -576,7 +576,13 @@ function closeModal(event) {
     modal.style.display = "none";
 }
 
-function openEditModal(event) {
+function clearEditRefImage() {
+    document.getElementById("edit-ref-image").value = "";
+    document.getElementById("edit-ref-preview").style.display = "none";
+    document.getElementById("edit-ref-img-preview").src = "";
+}
+
+async function openEditModal(event) {
     if (event) {
         event.stopPropagation();
     }
@@ -584,6 +590,35 @@ function openEditModal(event) {
     const modal = document.getElementById("edit-page-modal");
     modal.style.display = "flex";
     document.getElementById("edit-instrucao").value = "";
+    clearEditRefImage();
+
+    // Carrega o prompt original da página
+    const promptBox = document.getElementById("edit-original-prompt");
+    promptBox.textContent = "Carregando...";
+    const filename = window.currentEditingFilename;
+    if (filename) {
+        try {
+            const res = await fetch(`/api/page-prompt/${encodeURIComponent(filename)}`);
+            const data = await res.json();
+            promptBox.textContent = data.prompt || "(Prompt não encontrado para esta página)";
+        } catch (e) {
+            promptBox.textContent = "(Erro ao carregar prompt)";
+        }
+    } else {
+        promptBox.textContent = "(Nenhuma página selecionada)";
+    }
+
+    // Preview da imagem de referência ao selecionar arquivo
+    document.getElementById("edit-ref-image").onchange = function() {
+        const file = this.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            document.getElementById("edit-ref-img-preview").src = e.target.result;
+            document.getElementById("edit-ref-preview").style.display = "block";
+        };
+        reader.readAsDataURL(file);
+    };
 }
 
 function closeEditModal(event) {
@@ -618,6 +653,17 @@ async function submitPageEdit() {
     btnSubmit.disabled = true;
     loader.style.display = "flex";
     
+    // Lê imagem de referência se houver
+    let refImageB64 = null;
+    const refFile = document.getElementById("edit-ref-image").files[0];
+    if (refFile) {
+        refImageB64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result.split(",")[1]);
+            reader.readAsDataURL(refFile);
+        });
+    }
+
     try {
         const response = await fetch("/api/edit-page", {
             method: "POST",
@@ -631,7 +677,8 @@ async function submitPageEdit() {
                 openai_api_key: openaiKey || null,
                 openrouter_api_key: openrouterKey || null,
                 poe_api_key: poeKey || null,
-                artista_model: document.getElementById("artista-model").value
+                artista_model: document.getElementById("artista-model").value,
+                ref_image_b64: refImageB64
             })
         });
         

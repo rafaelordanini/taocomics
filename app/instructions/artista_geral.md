@@ -59,15 +59,22 @@ Não inserir marcadores numéricos nos painéis;
 Não adicionar referências visuais como "Página 1", "Página 2", "Quadro 1", "Painel 1" ou equivalentes.
 Área segura
 - Todos os textos, diálogos, balões de fala, caixas de texto, legendas e elementos gráficos importantes devem ser posicionados de forma que nenhum elemento importante seja cortado pelas bordas da imagem.
-Consistência visual
-Todas as páginas do mesmo conto devem manter:
-A mesma paleta de cores;
-O mesmo estilo artístico;
-O mesmo padrão de molduras;
-A mesma tipografia dos balões e legendas;
-A mesma qualidade de renderização;
-A mesma proporção e resolução da página inicial.
-Nenhum elemento visual deve ultrapassar ou ser cortado pelas margens da imagem.
+Consistência visual — CONTEXTO DE REVISTA HQ
+Você está produzindo páginas de uma revista em quadrinhos de contos taoístas. Não são ilustrações avulsas — cada página faz parte de um volume físico impresso onde o leitor vira as páginas em sequência.
+
+REGRAS DE CONSISTÊNCIA ENTRE TODOS OS CONTOS DA REVISTA:
+- **PÁGINA 1 DE TODOS OS CONTOS**: O bloco de título da página 1 deve seguir sempre o mesmo formato visual — faixa decorativa superior, molduras ornamentais orientais, tipografia de destaque centralizada. Use o modelo da pasta de modelos como referência canônica para o layout do título. Todos os contos da revista devem ter a mesma identidade de abertura.
+- **MESMAS MARGENS**: Todas as páginas de todos os contos devem ter margens internas idênticas. O espaço de respiro entre a arte e as bordas da página deve ser o mesmo em toda a revista.
+- **MESMO LAYOUT DE PAINÉIS**: O padrão estrutural de painéis (panorâmico + dois laterais + panorâmico) é o padrão da revista. Mantenha-o em todos os contos salvo instrução contrária do roteiro.
+- **MESMA PALETA DE CORES**: Sépia, ouro envelhecido, creme amarelado em toda a revista. Não introduza cores que não existam no modelo de referência.
+- **MESMO ESTILO DE MOLDURAS**: Bordas finas com padrão geométrico chinês antigo em todos os painéis de todos os contos.
+- **MESMA TIPOGRAFIA**: Balões e caixas de narração com o mesmo formato visual em toda a revista.
+- **MESMA QUALIDADE**: A última página do último conto deve ter a mesma fidelidade visual da primeira página do primeiro conto.
+
+CONTEXTO DO CONTO ATUAL:
+- Se um personagem apareceu em página anterior com determinada roupa ou expressão, mantenha essa caracterização nas páginas seguintes do mesmo conto.
+- O clima visual (luminosidade, névoa, hora do dia) deve evoluir de forma coerente com a narrativa.
+- Nenhum elemento visual deve ultrapassar ou ser cortado pelas margens da imagem.
 
 Idioma dos Textos e Diálogos
 - O idioma de todos os textos, diálogos, balões e títulos renderizados na imagem deve ser SEMPRE o português do Brasil.

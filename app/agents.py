@@ -1178,7 +1178,7 @@ def _artista_fallback(client, prompt: str, model_id: str = "google/gemini-2.5-fl
             time.sleep(2.0 * (attempt + 1))
 
 
-def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None) -> dict:
+def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
     # MODO TESTE: apenas Codex permitido — nenhum outro modelo de imagem será tentado
     models_to_try = ["codex/gpt-image-2"]
 
@@ -3147,7 +3147,7 @@ def find_tale_dir_by_filename(filename: str) -> str:
 
 
 
-def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict, artista_model: str = "codex/gpt-image-2") -> bool:
+def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict, artista_model: str = "codex/gpt-image-2", ref_image_b64: str = None) -> bool:
     parts = filename.split("_pagina_")
     if len(parts) < 2:
         raise ValueError("Formato de arquivo inválido.")
@@ -3203,6 +3203,12 @@ def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict
     def dummy_sse(msg):
         pass
         
+    ref_image = None
+    if ref_image_b64:
+        import base64 as _b64
+        ref_image = Image.open(io.BytesIO(_b64.b64decode(ref_image_b64))).convert("RGB")
+        prompt_atual += " Use the provided reference image as visual style guide."
+
     img_data = gerar_imagem_artista(
         o_client=o_client,
         or_client=or_client,
@@ -3210,7 +3216,8 @@ def execute_page_edit(tale_dir: str, filename: str, instruction: str, keys: dict
         prompt=prompt_atual,
         primary_model=artista_model,
         sse_send=dummy_sse,
-        poe_key=poe_key
+        poe_key=poe_key,
+        ref_image=ref_image
     )
     
     if isinstance(img_data, str):

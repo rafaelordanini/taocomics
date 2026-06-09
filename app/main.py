@@ -390,16 +390,37 @@ class EditPageRequest(BaseModel):
     anthropic_api_key: str = None
     claude_api_key: str = None
     artista_model: str = None
+    ref_image_b64: str = None
+
+
+@app.get("/api/page-prompt/{filename}")
+async def get_page_prompt(filename: str):
+    tale_dir = find_tale_dir_by_filename(filename)
+    if not tale_dir:
+        return {"prompt": None, "error": "Diretório do conto não encontrado."}
+    parts = filename.split("_pagina_")
+    if len(parts) < 2:
+        return {"prompt": None, "error": "Formato de arquivo inválido."}
+    try:
+        page_num = int(parts[1].replace(".png", ""))
+    except ValueError:
+        return {"prompt": None, "error": "Número de página inválido."}
+    prompt_path = os.path.join(tale_dir, f"prompt_pagina_{page_num}.txt")
+    if os.path.exists(prompt_path):
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return {"prompt": f.read().strip()}
+    return {"prompt": None}
+
 
 @app.post("/api/edit-page")
 async def edit_page(req: EditPageRequest):
     filename = req.filename
     instruction = req.instruction
-    
+
     tale_dir = find_tale_dir_by_filename(filename)
     if not tale_dir:
         return {"error": "Diretório do conto não encontrado para a página especificada."}
-        
+
     keys = {
         "gemini_api_key": req.gemini_api_key,
         "openai_api_key": req.openai_api_key,
@@ -407,9 +428,13 @@ async def edit_page(req: EditPageRequest):
         "poe_api_key": req.poe_api_key,
         "anthropic_api_key": req.anthropic_api_key or req.claude_api_key,
     }
-    
+
     try:
-        success = execute_page_edit(tale_dir, filename, instruction, keys, req.artista_model or "codex/gpt-image-2")
+        success = execute_page_edit(
+            tale_dir, filename, instruction, keys,
+            req.artista_model or "codex/gpt-image-2",
+            ref_image_b64=req.ref_image_b64
+        )
         if success:
             return {"status": "success"}
         else:
