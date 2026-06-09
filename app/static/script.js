@@ -419,43 +419,58 @@ function processAgentMessage(message) {
     }
     
     // Reconhece qual agente está falando
+    // Remove o timestamp [DD/MM HH:MM:SS] do início se presente
+    let timestamp = "";
+    let messageBody = message;
+    const tsMatch = message.match(/^(\[\d{2}\/\d{2} \d{2}:\d{2}:\d{2}\])\s*/);
+    if (tsMatch) {
+        timestamp = tsMatch[1] + " ";
+        messageBody = message.slice(tsMatch[0].length);
+    }
+
     let agent = "Sistema";
     let styleClass = "system";
     let text = message;
-    
-    if (message.startsWith("[Roteirista]")) {
+
+    if (messageBody.startsWith("[Roteirista]")) {
         agent = "Roteirista";
         styleClass = "roteirista";
-        text = message.replace("[Roteirista]", "").trim();
+        text = timestamp + messageBody.replace("[Roteirista]", "").trim();
         progressBar.style.width = "20%";
-    } else if (message.startsWith("[Designer Oriental]")) {
+    } else if (messageBody.startsWith("[Designer Oriental]")) {
         agent = "Designer Oriental";
         styleClass = "designer";
-        text = message.replace("[Designer Oriental]", "").trim();
+        text = timestamp + messageBody.replace("[Designer Oriental]", "").trim();
         progressBar.style.width = "40%";
-    } else if (message.startsWith("[Artista]")) {
+    } else if (messageBody.startsWith("[Artista]")) {
         agent = "Artista (Desenho)";
         styleClass = "artista";
-        text = message.replace("[Artista]", "").trim();
+        text = timestamp + messageBody.replace("[Artista]", "").trim();
         progressBar.style.width = "60%";
-    } else if (message.startsWith("[Revisor]")) {
+    } else if (messageBody.startsWith("[Revisor]")) {
         agent = "Revisor (Feedback)";
         styleClass = "revisor";
-        text = message.replace("[Revisor]", "").trim();
+        text = timestamp + messageBody.replace("[Revisor]", "").trim();
         progressBar.style.width = "75%";
-    } else if (message.startsWith("[Especialista China]")) {
+    } else if (messageBody.startsWith("[Especialista China]")) {
         agent = "Especialista China";
         styleClass = "especialista";
-        text = message.replace("[Especialista China]", "").trim();
+        text = timestamp + messageBody.replace("[Especialista China]", "").trim();
         progressBar.style.width = "90%";
-    } else if (message.startsWith("[Líder]")) {
+    } else if (messageBody.startsWith("[Líder]")) {
         agent = "Líder";
         styleClass = "lider";
-        text = message.replace("[Líder]", "").trim();
-    } else if (message.startsWith("[Sistema]")) {
+        text = timestamp + messageBody.replace("[Líder]", "").trim();
+    } else if (messageBody.startsWith("[Orquestrador]")) {
         agent = "Orquestrador";
         styleClass = "system";
-        text = message.replace("[Sistema]", "").trim();
+        text = timestamp + messageBody.replace("[Orquestrador]", "").trim();
+    } else if (messageBody.startsWith("[Sistema]")) {
+        agent = "Orquestrador";
+        styleClass = "system";
+        text = timestamp + messageBody.replace("[Sistema]", "").trim();
+    } else {
+        text = timestamp + messageBody;
     }
     
     // Identifica se é uma chamada de backup ou retry
