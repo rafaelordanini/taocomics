@@ -131,6 +131,15 @@
                     </div>
                 </div>
 
+                <div class="panel-section">
+                    <h3><span class="material-icons-round">cloud_upload</span> Google Drive</h3>
+                    <button id="btn-drive-sync" onclick="driveSyncAll()" style="background: rgba(66,133,244,0.15); border: 1px solid rgba(66,133,244,0.35); color: #6ab0f5; padding: 0.65rem 1rem; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; width: 100%; justify-content: center; transition: all 0.3s;">
+                        <span class="material-icons-round" style="font-size:1.1rem;">cloud_sync</span>
+                        Sincronizar tudo agora
+                    </button>
+                    <p id="drive-sync-status" style="font-size:0.75rem; color: var(--text-secondary); text-align:center; min-height:1rem;"></p>
+                </div>
+
                 <div class="panel-section" id="api-balances-section">
                     <h3 style="display: flex; align-items: center; justify-content: space-between;">
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
