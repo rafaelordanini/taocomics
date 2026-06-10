@@ -25,7 +25,7 @@ Verificações linguísticas:
 
 [CRÍTICO — PRESERVAÇÃO DO ESTILO VISUAL TAOÍSTA]
 Toda "Correção sugerida" enviada ao Artista DEVE terminar com a seguinte instrução obrigatória, sem exceção:
-"Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes, and the 道 red seal stamp in the bottom-right corner."
+"Maintain the full taoist visual style: aged parchment paper texture as full page background, warm sepia and antique gold palette, varied panel layout (panoramic + side-by-side + panoramic), thin Chinese ornamental panel borders, speech bubbles and narrative boxes with parchment-textured background (never white), dramatic god-ray lighting, mystical mist and mountain landscapes. The 道 red seal signature stamp must appear ONLY on the last page of the tale (bottom-right corner) — never on page 1 or intermediate pages."
 
 FORMATO DA RESPOSTA
 Se houver erros:

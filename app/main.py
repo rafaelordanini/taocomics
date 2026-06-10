@@ -455,15 +455,18 @@ async def edit_page(req: EditPageRequest):
 @app.post("/api/drive-sync-all")
 async def drive_sync_all():
     """Envia todos os arquivos de saved_comics para o Google Drive."""
-    from app.drive_upload import upload_file_to_drive
-    import os
+    from app.drive_upload import upload_file_to_drive, get_drive_status
+
+    # Diagnóstico de conexão antes de tentar enviar
+    ok, msg = get_drive_status()
+    if not ok:
+        return {"uploaded": 0, "failed": 0, "files": [], "errors": [msg]}
 
     base_dir = get_saved_comics_dir()
     uploaded = []
     failed = []
 
     for root, dirs, files in os.walk(base_dir):
-        # Ignora a pasta de rejeitadas para não lotar o Drive
         dirs[:] = [d for d in dirs if d != "rejeitadas"]
         for fname in files:
             if fname.startswith("."):

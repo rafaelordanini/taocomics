@@ -48,8 +48,9 @@ Cada página gerada deve parecer uma página de uma graphic novel filosófica or
 - Rostos expressivos, detalhados, com traços asiáticos clássicos.
 - Gestual contemplativo, pausado, nunca agressivo.
 
-## Selo Taoísta
-- Em todas as páginas (exceto página 1 que tem o título), incluir o **caractere 道 (Tao) em caligrafia grande** no canto inferior direito, dentro de um **selo vermelho quadrado** (estilo carimbo de tinta chinesa), como assinatura da obra.
+## Selo Taoísta (Assinatura — SOMENTE NA ÚLTIMA PÁGINA)
+- O **caractere 道 (Tao) em caligrafia grande** dentro de um **selo vermelho quadrado** (estilo carimbo de tinta chinesa) é a assinatura de encerramento da obra e deve aparecer EXCLUSIVAMENTE na última página do conto, no canto inferior direito.
+- É PROIBIDO incluir esse selo vermelho 道 na página 1 ou em qualquer página intermediária. Somente a página final leva a assinatura.
 
 ## Elementos de Natureza Obrigatórios
 - Montanhas envoltas em névoa, picos rochosos, rios e cachoeiras, bambus, pinheiros anciãos, flores de lótus, garças brancas, símbolos yin-yang sutis integrados à composição.
@@ -110,7 +111,7 @@ O prompt deve:
 2. Descrever o layout dos painéis com as bordas ornamentais.
 3. Descrever cada painel: cena, personagens, ações, iluminação.
 4. Especificar os balões/caixas de texto com fundo de pergaminho e o texto em português que deve aparecer em cada um.
-5. Incluir o selo 道 no canto inferior direito (exceto página 1).
+5. Incluir o selo de assinatura 道 no canto inferior direito SOMENTE se esta for a última página do conto. Nas demais páginas (página 1 e intermediárias), NÃO incluir o selo 道.
 
 Máximo de 250 palavras. Seja específico e visual. Evite floreios literários.
 

@@ -27,7 +27,7 @@ Para que as páginas geradas se pareçam com o estilo de referência do projeto,
 
 7. **PERSONAGENS CLÁSSICOS**: Sábios taoístas com roupas fluidas Hanfu, gestuais contemplativos, rostos expressivos com traços asiáticos clássicos.
 
-8. **SELO 道 NO CANTO INFERIOR DIREITO**: Em todas as páginas (exceto página 1 que tem o título), incluir o caractere 道 em caligrafia grande dentro de um selo vermelho quadrado (carimbo de tinta chinesa) no canto inferior direito.
+8. **SELO 道 NO CANTO INFERIOR DIREITO — SOMENTE NA ÚLTIMA PÁGINA**: O caractere 道 em caligrafia grande dentro de um selo vermelho quadrado (carimbo de tinta chinesa) no canto inferior direito deve aparecer EXCLUSIVAMENTE na última página do conto. Em todas as outras páginas (incluindo a página 1), esse selo NÃO deve ser incluído.
 
 9. **ELEMENTOS DE NATUREZA**: Montanhas na névoa, bambus, pinheiros anciãos, flores de lótus, garças brancas, rios sinuosos — sempre integrados à composição.
 

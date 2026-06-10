@@ -84,13 +84,15 @@ def _ensure_drive_path(service, rel_path: str, root_folder_id: str) -> str:
 
 
 def upload_file_to_drive(filepath: str) -> str | None:
-    """Faz upload de qualquer arquivo para o Google Drive preservando a estrutura de pastas relativa ao saved_comics."""
+    """Faz upload (ou atualização) de qualquer arquivo para o Google Drive preservando a estrutura de pastas."""
     root_folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
     if not root_folder_id:
+        logger.warning("[drive] GOOGLE_DRIVE_FOLDER_ID não configurado — upload ignorado.")
         return None
     if not all([os.environ.get("GOOGLE_OAUTH_CLIENT_ID"),
                 os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"),
                 os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN")]):
+        logger.warning("[drive] Credenciais OAuth incompletas — upload ignorado.")
         return None
 
     try:
@@ -99,14 +101,12 @@ def upload_file_to_drive(filepath: str) -> str | None:
         service = _get_drive_service()
         filepath = os.path.abspath(filepath)
 
-        # Descobre o caminho relativo a partir de saved_comics
-        saved_comics_dir = None
-        for base in ("/data/saved_comics", "/app/app/static/saved_comics"):
-            if filepath.startswith(base):
-                saved_comics_dir = base
-                break
-
-        if saved_comics_dir:
+        # Descobre o caminho relativo a partir de saved_comics — base-agnóstico
+        # (funciona com /data/saved_comics, /tmp/saved_comics, /app/app/static/saved_comics, etc.)
+        parts = filepath.split(os.sep)
+        if "saved_comics" in parts:
+            idx = len(parts) - 1 - parts[::-1].index("saved_comics")
+            saved_comics_dir = os.sep.join(parts[: idx + 1])
             rel = os.path.relpath(os.path.dirname(filepath), saved_comics_dir)
             if rel == ".":
                 parent_id = root_folder_id
@@ -119,11 +119,20 @@ def upload_file_to_drive(filepath: str) -> str | None:
         mime, _ = mimetypes.guess_type(filepath)
         mime = mime or "application/octet-stream"
 
-        meta = {"name": filename, "parents": [parent_id]}
+        # Verifica se já existe arquivo com o mesmo nome na pasta — faz update em vez de criar duplicata
+        q = f"name='{filename}' and '{parent_id}' in parents and trashed=false"
+        existing = service.files().list(q=q, fields="files(id)").execute().get("files", [])
+
         media = MediaFileUpload(filepath, mimetype=mime, resumable=False)
-        file = service.files().create(body=meta, media_body=media, fields="id").execute()
-        file_id = file.get("id")
-        logger.info(f"[drive] Upload: {filename} → {file_id}")
+        if existing:
+            file_id = existing[0]["id"]
+            service.files().update(fileId=file_id, media_body=media).execute()
+            logger.info(f"[drive] Atualizado: {filename} → {file_id}")
+        else:
+            meta = {"name": filename, "parents": [parent_id]}
+            file = service.files().create(body=meta, media_body=media, fields="id").execute()
+            file_id = file.get("id")
+            logger.info(f"[drive] Upload: {filename} → {file_id}")
         return file_id
     except Exception as e:
         logger.error(f"[drive] Erro ao fazer upload de {filepath}: {e}")
@@ -132,3 +141,26 @@ def upload_file_to_drive(filepath: str) -> str | None:
 
 def upload_image_to_drive(filepath: str, folder_id: str = None) -> str | None:
     return upload_file_to_drive(filepath)
+
+
+def get_drive_status() -> tuple[bool, str]:
+    """Diagnostica a conexão com o Google Drive. Retorna (ok, mensagem)."""
+    missing = [v for v in ("GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_OAUTH_CLIENT_ID",
+                           "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN")
+               if not os.environ.get(v)]
+    if missing:
+        return False, f"Variáveis ausentes no Railway: {', '.join(missing)}"
+    try:
+        service = _get_drive_service()
+        root_folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
+        # Valida que a pasta raiz existe e é acessível com o token atual
+        service.files().get(fileId=root_folder_id, fields="id,name").execute()
+        return True, "Conexão com o Google Drive OK."
+    except Exception as e:
+        msg = str(e)
+        if "invalid_grant" in msg or "expired" in msg or "revoked" in msg:
+            return False, ("Refresh token expirado ou revogado. Gere um novo "
+                           "GOOGLE_OAUTH_REFRESH_TOKEN no OAuth Playground e atualize no Railway.")
+        if "404" in msg or "notFound" in msg:
+            return False, "GOOGLE_DRIVE_FOLDER_ID não encontrado ou sem permissão de acesso."
+        return False, f"Falha na conexão com o Drive: {msg}"
