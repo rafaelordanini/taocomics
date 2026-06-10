@@ -152,6 +152,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
+// Sincroniza todos os arquivos com o Google Drive
+async function driveSyncAll() {
+    const btn = document.getElementById("btn-drive-sync");
+    const status = document.getElementById("drive-sync-status");
+    btn.disabled = true;
+    btn.querySelector("span.material-icons-round").textContent = "sync";
+    btn.querySelector("span.material-icons-round").classList.add("animate-spin");
+    status.textContent = "Sincronizando...";
+    status.style.color = "var(--text-secondary)";
+    try {
+        const res = await fetch("/api/drive-sync-all", { method: "POST" });
+        const data = await res.json();
+        if (data.errors && data.errors.length > 0) {
+            status.textContent = `✓ ${data.uploaded} enviados  ✗ ${data.failed} falharam`;
+            status.style.color = "#f39c12";
+        } else if (data.uploaded === 0) {
+            status.textContent = "Nenhum arquivo enviado. Verifique as credenciais do Drive.";
+            status.style.color = "#e74c3c";
+        } else {
+            status.textContent = `✓ ${data.uploaded} arquivos enviados ao Drive`;
+            status.style.color = "#27ae60";
+        }
+    } catch (e) {
+        status.textContent = "Erro ao sincronizar: " + e.message;
+        status.style.color = "#e74c3c";
+    } finally {
+        btn.disabled = false;
+        btn.querySelector("span.material-icons-round").classList.remove("animate-spin");
+        btn.querySelector("span.material-icons-round").textContent = "cloud_sync";
+    }
+}
+
 // Atualiza a lista de imagens na galeria
 async function refreshGallery() {
     try {
