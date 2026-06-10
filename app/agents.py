@@ -3001,7 +3001,8 @@ def processar_conto_taoista(
             sse_send(f"[Sistema] Novo prompt da página {i} salvo na pasta do conto: {prompt_path}")
             
         if designer_reasoning:
-            sse_send(f"[Designer Oriental] JSON:{json.dumps({'text': f'Prompt da Página {i}: \"{prompt_designer}\"', 'reasoning': designer_reasoning}, ensure_ascii=False)}")
+            _designer_text = f'Prompt da Página {i}: "{prompt_designer}"'
+            sse_send(f"[Designer Oriental] JSON:{json.dumps({'text': _designer_text, 'reasoning': designer_reasoning}, ensure_ascii=False)}")
         else:
             sse_send(f"[Designer Oriental] Prompt da Página {i}: \"{prompt_designer}\"")
         
@@ -3283,7 +3284,8 @@ def processar_conto_taoista(
                 _drive_upload(parecer_revisor_principal_path)
                 
                 if revisor_reasoning:
-                    sse_send(f"[Revisor] JSON:{json.dumps({'text': f'Parecer do Revisor: \"{resultado_revisao}\"', 'reasoning': revisor_reasoning}, ensure_ascii=False)}")
+                    _revisor_text = f'Parecer do Revisor: "{resultado_revisao}"'
+                    sse_send(f"[Revisor] JSON:{json.dumps({'text': _revisor_text, 'reasoning': revisor_reasoning}, ensure_ascii=False)}")
                 else:
                     sse_send(f"[Revisor] Parecer do Revisor: \"{resultado_revisao}\"")
                 
