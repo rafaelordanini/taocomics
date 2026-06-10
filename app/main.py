@@ -455,15 +455,12 @@ async def edit_page(req: EditPageRequest):
 @app.post("/api/drive-sync-all")
 async def drive_sync_all():
     """Envia todos os arquivos de saved_comics para o Google Drive."""
-    from app.drive_upload import upload_file_to_drive
+    from app.drive_upload import upload_file_to_drive, get_drive_status
 
-    # Diagnóstico rápido de credenciais
-    missing = [v for v in ["GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_OAUTH_CLIENT_ID",
-                            "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN"]
-               if not os.environ.get(v)]
-    if missing:
-        return {"uploaded": 0, "failed": 0, "files": [],
-                "errors": [f"Variáveis de ambiente ausentes no Railway: {', '.join(missing)}"]}
+    # Diagnóstico de conexão antes de tentar enviar
+    ok, msg = get_drive_status()
+    if not ok:
+        return {"uploaded": 0, "failed": 0, "files": [], "errors": [msg]}
 
     base_dir = get_saved_comics_dir()
     uploaded = []

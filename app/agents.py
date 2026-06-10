@@ -2667,6 +2667,17 @@ def processar_conto_taoista(
     os.makedirs(artista_dir, exist_ok=True)
     os.makedirs(aprovadas_dir, exist_ok=True)
     os.makedirs(rejeitadas_dir, exist_ok=True)
+
+    # Verifica o status do Google Drive no início da execução e informa no console
+    try:
+        from app.drive_upload import get_drive_status
+        _drive_ok, _drive_msg = get_drive_status()
+        if _drive_ok:
+            sse_send("[Sistema] Google Drive conectado — arquivos serão sincronizados em tempo real.")
+        else:
+            sse_send(f"[Sistema] ⚠️ Google Drive indisponível: {_drive_msg} Os arquivos serão salvos apenas localmente.")
+    except Exception as _e:
+        sse_send(f"[Sistema] ⚠️ Não foi possível verificar o Google Drive: {_e}")
     
     # Retrocompatibilidade: Migrar arquivos antigos da raiz do conto para as novas pastas
     try:
@@ -3126,8 +3137,15 @@ def processar_conto_taoista(
                 )
                 sse_send(f"[Orquestrador] Prompt para o Artista ({len(prompt_a_gerar)} chars): {prompt_a_gerar[:120]}...")
 
-                # Artista recebe página 1 aprovada como referência visual para páginas seguintes
-                ref_img_artista = pagina1_aprovada if i > 1 and pagina1_aprovada else None
+                # Consistência de revista: página 1 de TODO conto ancora no modelo canônico
+                # da pasta Modelos (mesma identidade visual entre contos diferentes);
+                # páginas seguintes ancoram na página 1 já aprovada deste conto.
+                if i > 1 and pagina1_aprovada:
+                    ref_img_artista = pagina1_aprovada
+                elif i == 1 and modelos_images:
+                    ref_img_artista = modelos_images[0]
+                else:
+                    ref_img_artista = None
 
                 # 3. Artista desenha (gerar_imagem_artista com fallback em cascata)
                 img_data = gerar_imagem_artista(
