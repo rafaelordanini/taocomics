@@ -548,16 +548,25 @@ def _executar_agente_texto_visao(
             print(msg_fail)
         last_error = e
 
-    # 3. Tentar OpenRouter / Gemini (fallback nativo pago)
+    # 3. Tentar fallback nativo gratuito (Gemini Pro/Flash). Se falhar, NÃO propaga:
+    #    segue para o Poe (4º) e, só por último, o OpenRouter (via run_with_retry).
     if fallback_or_fn:
-        msg_try = f"[{agent_name}] Executando fallback nativo/OpenRouter..."
+        msg_try = f"[{agent_name}] Executando fallback nativo gratuito (Gemini)..."
         if sse_send:
             sse_send(msg_try)
         else:
             print(msg_try)
-        return fallback_or_fn()
+        try:
+            return fallback_or_fn()
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Fallback nativo gratuito falhou: {str(e)}. Tentando Poe..."
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
 
-    # 4. Poe como último recurso
+    # 4. Poe (penúltimo recurso — antes do OpenRouter pago)
     try:
         poe_models = ["Claude-3.5-Sonnet", "Claude-3-5-Sonnet", "GPT-4o"]
         poe_content = None
