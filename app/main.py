@@ -456,14 +456,20 @@ async def edit_page(req: EditPageRequest):
 async def drive_sync_all():
     """Envia todos os arquivos de saved_comics para o Google Drive."""
     from app.drive_upload import upload_file_to_drive
-    import os
+
+    # Diagnóstico rápido de credenciais
+    missing = [v for v in ["GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_OAUTH_CLIENT_ID",
+                            "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN"]
+               if not os.environ.get(v)]
+    if missing:
+        return {"uploaded": 0, "failed": 0, "files": [],
+                "errors": [f"Variáveis de ambiente ausentes no Railway: {', '.join(missing)}"]}
 
     base_dir = get_saved_comics_dir()
     uploaded = []
     failed = []
 
     for root, dirs, files in os.walk(base_dir):
-        # Ignora a pasta de rejeitadas para não lotar o Drive
         dirs[:] = [d for d in dirs if d != "rejeitadas"]
         for fname in files:
             if fname.startswith("."):

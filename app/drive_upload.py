@@ -84,13 +84,15 @@ def _ensure_drive_path(service, rel_path: str, root_folder_id: str) -> str:
 
 
 def upload_file_to_drive(filepath: str) -> str | None:
-    """Faz upload de qualquer arquivo para o Google Drive preservando a estrutura de pastas relativa ao saved_comics."""
+    """Faz upload (ou atualização) de qualquer arquivo para o Google Drive preservando a estrutura de pastas."""
     root_folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
     if not root_folder_id:
+        logger.warning("[drive] GOOGLE_DRIVE_FOLDER_ID não configurado — upload ignorado.")
         return None
     if not all([os.environ.get("GOOGLE_OAUTH_CLIENT_ID"),
                 os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"),
                 os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN")]):
+        logger.warning("[drive] Credenciais OAuth incompletas — upload ignorado.")
         return None
 
     try:
@@ -119,11 +121,20 @@ def upload_file_to_drive(filepath: str) -> str | None:
         mime, _ = mimetypes.guess_type(filepath)
         mime = mime or "application/octet-stream"
 
-        meta = {"name": filename, "parents": [parent_id]}
+        # Verifica se já existe arquivo com o mesmo nome na pasta — faz update em vez de criar duplicata
+        q = f"name='{filename}' and '{parent_id}' in parents and trashed=false"
+        existing = service.files().list(q=q, fields="files(id)").execute().get("files", [])
+
         media = MediaFileUpload(filepath, mimetype=mime, resumable=False)
-        file = service.files().create(body=meta, media_body=media, fields="id").execute()
-        file_id = file.get("id")
-        logger.info(f"[drive] Upload: {filename} → {file_id}")
+        if existing:
+            file_id = existing[0]["id"]
+            service.files().update(fileId=file_id, media_body=media).execute()
+            logger.info(f"[drive] Atualizado: {filename} → {file_id}")
+        else:
+            meta = {"name": filename, "parents": [parent_id]}
+            file = service.files().create(body=meta, media_body=media, fields="id").execute()
+            file_id = file.get("id")
+            logger.info(f"[drive] Upload: {filename} → {file_id}")
         return file_id
     except Exception as e:
         logger.error(f"[drive] Erro ao fazer upload de {filepath}: {e}")

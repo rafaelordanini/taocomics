@@ -1493,14 +1493,23 @@ def _revisor_primary(
     prompt_text = (
         f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n\n"
         f"Instruções do Designer: {prompt_designer}\n\n"
-        f"Verificações:\n"
+        f"Verificações OBRIGATÓRIAS:\n"
         f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos, névoa e montanhas taoístas.\n"
         f"2. Caixas de texto/balões: Aprove se existirem e estiverem bem dispostos, mesmo com texto ilegível.\n"
     )
-    if titulo:
-        prompt_text += f"3. Título (Pág 1): Se for página 1, DEVE conter exatamente '{titulo}' no topo.\n"
+    if num_pagina == 1:
+        if titulo:
+            prompt_text += (
+                f"3. TÍTULO OBRIGATÓRIO — ESTA É A PÁGINA 1: A imagem DEVE conter o título '{titulo}' visível no topo. "
+                f"Se o título estiver ausente ou errado, REPROVE imediatamente com a mensagem 'TÍTULO AUSENTE'.\n"
+            )
+        else:
+            prompt_text += (
+                f"3. TÍTULO OBRIGATÓRIO — ESTA É A PÁGINA 1: A imagem DEVE conter um título visível no topo. "
+                f"Se não houver título, REPROVE imediatamente.\n"
+            )
     else:
-        prompt_text += "3. Título (Pág 1): Se for página 1, deve haver um título no topo.\n"
+        prompt_text += f"3. Título: Esta é a página {num_pagina} — NÃO deve conter título de capa. Ignore se não houver.\n"
 
     prompt_text += (
         f"4. Arte Final: Se for a última página ({total_paginas}), deve evidenciar poeticamente o encerramento.\n"
@@ -1511,8 +1520,8 @@ def _revisor_primary(
         prompt_text += f"6. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
 
     prompt_text += (
-        "\nResponda APENAS 'APROVADO' se adequada. "
-        "Caso haja erros graves, descreva-os detalhadamente em português para o artista corrigir."
+        "\nResponda APENAS 'APROVADO' se todas as verificações passarem. "
+        "Caso haja qualquer falha, descreva-a detalhadamente em português para o artista corrigir."
     )
     
     def native_fallback():
@@ -1582,14 +1591,23 @@ def _revisor_fallback(
         prompt_text = (
             f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}.\n\n"
             f"Instruções do Designer: {prompt_designer}\n\n"
-            f"Verificações:\n"
+            f"Verificações OBRIGATÓRIAS:\n"
             f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos.\n"
             f"2. Balões/caixas de texto: Aprove se existirem, mesmo com texto ilegível.\n"
         )
-        if titulo:
-            prompt_text += f"3. Título (Pág 1): Deve conter exatamente '{titulo}' no topo.\n"
+        if num_pagina == 1:
+            if titulo:
+                prompt_text += (
+                    f"3. TÍTULO OBRIGATÓRIO — ESTA É A PÁGINA 1: A imagem DEVE conter o título '{titulo}' visível no topo. "
+                    f"Se o título estiver ausente ou errado, REPROVE imediatamente com a mensagem 'TÍTULO AUSENTE'.\n"
+                )
+            else:
+                prompt_text += (
+                    f"3. TÍTULO OBRIGATÓRIO — ESTA É A PÁGINA 1: A imagem DEVE conter um título visível no topo. "
+                    f"Se não houver título, REPROVE imediatamente.\n"
+                )
         else:
-            prompt_text += "3. Título (Pág 1): Deve haver título no topo.\n"
+            prompt_text += f"3. Título: Esta é a página {num_pagina} — NÃO deve conter título de capa.\n"
 
         prompt_text += f"4. Arte Final: Última página deve evidenciar poeticamente o encerramento.\n"
         if geral:
