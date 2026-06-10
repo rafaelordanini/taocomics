@@ -1546,15 +1546,21 @@ def _revisor_primary(
 
     prompt_text += (
         f"4. Arte Final: Se for a última página ({total_paginas}), deve evidenciar poeticamente o encerramento.\n"
+        f"5. VERIFICAÇÃO DE QUADRINHOS CORTADOS — CRÍTICO: Examine CADA painel/quadrinho da página individualmente. "
+        f"Um painel está CORTADO quando qualquer parte da sua cena, personagem, borda ou moldura está "
+        f"truncada pela borda da imagem — ou seja, parece que o painel continua além do limite visível. "
+        f"REPROVE imediatamente se houver QUALQUER painel cortado, mesmo que parcialmente. "
+        f"Cada quadrinho deve estar 100% completo e visível dentro da página. "
+        f"Descreva exatamente qual painel está cortado (posição: superior/inferior/esquerda/direita) para o artista corrigir.\n"
     )
     if geral:
-        prompt_text += f"5. Instruções Gerais:\n{geral}\n"
+        prompt_text += f"6. Instruções Gerais:\n{geral}\n"
     if especifica:
-        prompt_text += f"6. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
+        prompt_text += f"7. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
 
     prompt_text += (
-        "\nResponda APENAS 'APROVADO' se todas as verificações passarem. "
-        "Caso haja qualquer falha, descreva-a detalhadamente em português para o artista corrigir."
+        "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem sem exceção. "
+        "Qualquer painel cortado é motivo imediato de reprovação — descreva detalhadamente em português para o artista corrigir."
     )
     
     def native_fallback():
@@ -1642,15 +1648,21 @@ def _revisor_fallback(
         else:
             prompt_text += f"3. Título: Esta é a página {num_pagina} — NÃO deve conter título de capa.\n"
 
-        prompt_text += f"4. Arte Final: Última página deve evidenciar poeticamente o encerramento.\n"
+        prompt_text += (
+            f"4. Arte Final: Última página deve evidenciar poeticamente o encerramento.\n"
+            f"5. VERIFICAÇÃO DE QUADRINHOS CORTADOS — CRÍTICO: Examine CADA painel individualmente. "
+            f"Um painel está CORTADO quando qualquer parte da cena, personagem, borda ou moldura "
+            f"é truncada pela borda da imagem. REPROVE se houver QUALQUER painel cortado. "
+            f"Descreva qual painel está cortado (posição na página) para o artista corrigir.\n"
+        )
         if geral:
-            prompt_text += f"5. Instruções Gerais:\n{geral}\n"
+            prompt_text += f"6. Instruções Gerais:\n{geral}\n"
         if especifica:
-            prompt_text += f"6. Instrução Específica (PRIORIDADE):\n{especifica}\n"
+            prompt_text += f"7. Instrução Específica (PRIORIDADE):\n{especifica}\n"
 
         prompt_text += (
-            "\nResponda APENAS 'APROVADO' se adequada. "
-            "Caso haja erros graves, descreva-os detalhadamente em português."
+            "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem. "
+            "Painel cortado é reprovação imediata — descreva detalhadamente em português."
         )
         
         attachments = []

@@ -38,6 +38,12 @@ Dimensões
 - A revista física será diagramada no tamanho 14,5 × 21,75 cm. Toda a arte, distribuição de painéis, caixas de diálogo e balões devem ser dimensionados para caber perfeitamente nesse espaço físico sem cortes ou distorções.
 - Qualquer tentativa de utilizar outros formatos (como imagens quadradas ou horizontais) é proibida. A proporção vertical 2:3 de 1024x1536 px / 14,5x21,75 cm é o padrão único e obrigatório do projeto.
 - **[CRÍTICO - SEM FAIXAS OU BORDAS PRETAS]**: A ilustração deve ser full-bleed e preencher 100% da área da imagem de ponta a ponta. Não devem existir faixas pretas nas laterais (pillarboxing), margens pretas de preenchimento ou bordas escuras no fundo da página. A arte deve se estender por todo o limite de 1024x1536 px.
+
+[CRÍTICO - PROIBIÇÃO ABSOLUTA DE QUADRINHOS CORTADOS]
+- **NENHUM QUADRINHO PODE SER CORTADO**: É terminantemente proibido que qualquer painel/quadrinho da página seja cortado pela borda da imagem. Cada quadrinho deve aparecer COMPLETO e INTEIRAMENTE visível — do topo à base, da esquerda à direita.
+- **PLANEJAR O LAYOUT ANTES DE DESENHAR**: Antes de compor a página, calcule mentalmente o espaço disponível e distribua os quadrinhos de modo que todos caibam completamente dentro dos limites de 1024×1536 px. Se o número de painéis exigir, reduza o tamanho de cada um — nunca corte.
+- **MARGEM DE SEGURANÇA DE PAINÉIS**: Cada painel deve terminar a pelo menos 10 px das bordas da imagem. Nenhuma moldura, borda ou conteúdo de painel deve tocar ou ultrapassar as extremidades da imagem.
+- **VERIFICAÇÃO INTERNA OBRIGATÓRIA**: Antes de finalizar a geração, verifique internamente se todos os painéis estão visíveis e completos. Se detectar que algum painel seria cortado, reorganize o layout até que todos caibam inteiros.
 Página de abertura do conto (SOMENTE A PÁGINA 1)
 - **[CRÍTICO - TÍTULO EXISTE APENAS NA PÁGINA 1]**: O título principal do conto deve aparecer ÚNICA E EXCLUSIVAMENTE na primeira página (página 1). Nenhuma outra página deve conter título, subtítulo ou cabeçalho de qualquer tipo.
 - Quando a página produzida for a página 1, ela deverá conter o título principal seguindo exatamente o mesmo estilo visual da página-modelo fornecida:
