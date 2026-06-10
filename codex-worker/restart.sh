@@ -24,11 +24,14 @@ echo "Iniciando servidor..."
 cd "$WORKER_DIR"
 nohup env WORKER_TOKEN="$WORKER_TOKEN" "$VENV_UVICORN" server:app --host 0.0.0.0 --port 8080 > "$LOG_FILE" 2>&1 &
 
-sleep 3
-if curl -s http://localhost:8080/health | grep -q "ok"; then
-    echo "✓ Servidor rodando com sucesso!"
-    curl -s http://localhost:8080/health
-else
-    echo "✗ Servidor não respondeu. Verifique o log:"
-    tail -20 "$LOG_FILE"
-fi
+# Aguarda até 18 segundos pelo servidor subir (6 tentativas × 3s)
+for i in 1 2 3 4 5 6; do
+    sleep 3
+    if curl -s http://localhost:8080/health | grep -q "ok"; then
+        echo "✓ Servidor rodando com sucesso!"
+        curl -s http://localhost:8080/health
+        exit 0
+    fi
+done
+echo "✗ Servidor não respondeu. Verifique o log:"
+tail -20 "$LOG_FILE"
