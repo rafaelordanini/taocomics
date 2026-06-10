@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - comics_data:/data
+      - ./app/instructions:/app/app/instructions
+      - ./app/static/modelos:/app/app/static/modelos
+    env_file:
+      - .env
+    environment:
+      - DATA_DIR=/data
+    depends_on:
+      - worker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build:
+      context: ./codex-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - WORKER_TOKEN=${WORKER_TOKEN:-taocomics2024}
+    volumes:
+      - codex_home:/root
+
+volumes:
+  comics_data:
+  codex_home:
