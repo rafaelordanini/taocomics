@@ -468,10 +468,32 @@ def _executar_agente_texto_visao(
     custom_keys: dict = None,
     sse_send: Callable[[str], None] = None,
     fallback_or_fn: Callable[[], dict] = None,
-    g_client=None
+    g_client=None,
+    prefer_native_first: bool = False
 ) -> dict:
     keys = custom_keys or {}
     last_error = None
+    native_attempted = False
+
+    # 0. (opcional) Fallback nativo gratuito PRIMEIRO — usado por agentes que se
+    #    beneficiam do Gemini Pro + schema estruturado (ex.: Roteirista). Continua
+    #    gratuito; em caso de falha, segue para Flash/Codex/Poe normalmente.
+    if prefer_native_first and fallback_or_fn:
+        native_attempted = True
+        msg_try = f"[{agent_name}] Usando o modelo: Gemini 2.5 Pro (estruturado)"
+        if sse_send:
+            sse_send(msg_try)
+        else:
+            print(msg_try)
+        try:
+            return fallback_or_fn()
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Gemini Pro falhou: {str(e)}. Tentando Gemini Flash..."
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
 
     # 1. Tentar Gemini Flash (gratuito/barato, sem usar Codex nem Poe)
     g_client_to_use = g_client or keys.get("g_client")
@@ -548,16 +570,26 @@ def _executar_agente_texto_visao(
             print(msg_fail)
         last_error = e
 
-    # 3. Tentar OpenRouter / Gemini (fallback nativo pago)
-    if fallback_or_fn:
-        msg_try = f"[{agent_name}] Executando fallback nativo/OpenRouter..."
+    # 3. Tentar fallback nativo gratuito (Gemini Pro/Flash), se ainda não tentado.
+    #    Se falhar, NÃO propaga: segue para o Poe (4º) e, só por último, o
+    #    OpenRouter (via run_with_retry).
+    if fallback_or_fn and not native_attempted:
+        msg_try = f"[{agent_name}] Executando fallback nativo gratuito (Gemini)..."
         if sse_send:
             sse_send(msg_try)
         else:
             print(msg_try)
-        return fallback_or_fn()
+        try:
+            return fallback_or_fn()
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Fallback nativo gratuito falhou: {str(e)}. Tentando Poe..."
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
 
-    # 4. Poe como último recurso
+    # 4. Poe (penúltimo recurso — antes do OpenRouter pago)
     try:
         poe_models = ["Claude-3.5-Sonnet", "Claude-3-5-Sonnet", "GPT-4o"]
         poe_content = None
@@ -756,7 +788,8 @@ def _roteirista_fallback(client, conto: str, geral: str = None, especifica: str 
         system_instruction=system_instruction,
         sse_send=sse_send,
         fallback_or_fn=native_fallback,
-        g_client=client
+        g_client=client,
+        prefer_native_first=True  # Roteiro usa Gemini Pro + schema estruturado como 1ª opção
     )
 
 
