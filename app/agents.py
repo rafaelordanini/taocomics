@@ -2870,7 +2870,8 @@ def processar_conto_taoista(
             _drive_upload(parecer_principal_path)
             
             if esp_roteiro_reasoning:
-                sse_send(f"[Especialista China] JSON:{json.dumps({'text': f'Parecer sobre o Roteiro (Revisão {tentativas_esp_roteiro}):\n{esp_roteiro_content}', 'reasoning': esp_roteiro_reasoning}, ensure_ascii=False)}")
+                _esp_text = f"Parecer sobre o Roteiro (Revisão {tentativas_esp_roteiro}):\n{esp_roteiro_content}"
+                sse_send(f"[Especialista China] JSON:{json.dumps({'text': _esp_text, 'reasoning': esp_roteiro_reasoning}, ensure_ascii=False)}")
             else:
                 sse_send(f"[Especialista China] Parecer sobre o Roteiro (Revisão {tentativas_esp_roteiro}):\n{esp_roteiro_content}")
                 
@@ -3092,7 +3093,8 @@ def processar_conto_taoista(
                 _drive_upload(parecer_prompt_path)
 
                 if esp_prompt_reasoning:
-                    sse_send(f"[Especialista China] JSON:{json.dumps({'text': f'Parecer do Especialista sobre o Prompt:\\n{resultado_esp_prompt}', 'reasoning': esp_prompt_reasoning}, ensure_ascii=False)}")
+                    _esp_text2 = f"Parecer do Especialista sobre o Prompt:\n{resultado_esp_prompt}"
+                    sse_send(f"[Especialista China] JSON:{json.dumps({'text': _esp_text2, 'reasoning': esp_prompt_reasoning}, ensure_ascii=False)}")
                 else:
                     sse_send(f"[Especialista China] Parecer do Especialista sobre o Prompt:\\n{resultado_esp_prompt}")
                     
@@ -3388,7 +3390,8 @@ def processar_conto_taoista(
                         )
                         
                         if especialista_reasoning:
-                            sse_send(f"[Especialista China] JSON:{json.dumps({'text': f'Parecer do Especialista (Revisão {tentativa_atual_esp}):\n{resultado_especialista}', 'reasoning': especialista_reasoning}, ensure_ascii=False)}")
+                            _esp_text3 = f"Parecer do Especialista (Revisão {tentativa_atual_esp}):\n{resultado_especialista}"
+                            sse_send(f"[Especialista China] JSON:{json.dumps({'text': _esp_text3, 'reasoning': especialista_reasoning}, ensure_ascii=False)}")
                         else:
                             sse_send(f"[Especialista China] Parecer do Especialista (Revisão {tentativa_atual_esp}):\n{resultado_especialista}")
                         
