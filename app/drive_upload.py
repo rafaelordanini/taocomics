@@ -12,16 +12,32 @@ _folder_cache: dict[str, str] = {}
 
 
 def _get_drive_service():
+    from googleapiclient.discovery import build
+
+    # Prefere Service Account (não expira) quando disponível
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if sa_json:
+        import json
+        from google.oauth2.service_account import Credentials as SACredentials
+        info = json.loads(sa_json)
+        creds = SACredentials.from_service_account_info(
+            info, scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        return build("drive", "v3", credentials=creds)
+
+    # Fallback: OAuth user credentials
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
-    from googleapiclient.discovery import build
 
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
     client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
     refresh_token = os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN")
 
     if not all([client_id, client_secret, refresh_token]):
-        raise RuntimeError("Variáveis GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET e GOOGLE_OAUTH_REFRESH_TOKEN não configuradas")
+        raise RuntimeError(
+            "Configure GOOGLE_SERVICE_ACCOUNT_JSON ou as três variáveis OAuth "
+            "(GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN)"
+        )
 
     creds = Credentials(
         token=None,
@@ -33,7 +49,6 @@ def _get_drive_service():
     )
     creds.refresh(Request())
 
-    # Verifica validade do token e alerta se próximo de expirar
     global _last_token_check
     now = datetime.now(timezone.utc)
     if _last_token_check is None or (now - _last_token_check).total_seconds() > 3600:
@@ -43,13 +58,10 @@ def _get_drive_service():
             if remaining < 600:
                 logger.warning(
                     f"[drive] ⚠️ Access token expira em {int(remaining)}s. "
-                    "Se uploads pararem, renove o GOOGLE_OAUTH_REFRESH_TOKEN no Railway."
+                    "Renove o GOOGLE_OAUTH_REFRESH_TOKEN."
                 )
         if not creds.valid:
-            logger.warning(
-                "[drive] ⚠️ Credenciais Google inválidas. "
-                "Renove o GOOGLE_OAUTH_REFRESH_TOKEN no Railway via OAuth Playground."
-            )
+            logger.warning("[drive] ⚠️ Credenciais Google inválidas.")
 
     return build("drive", "v3", credentials=creds)
 
@@ -145,11 +157,12 @@ def upload_image_to_drive(filepath: str, folder_id: str = None) -> str | None:
 
 def get_drive_status() -> tuple[bool, str]:
     """Diagnostica a conexão com o Google Drive. Retorna (ok, mensagem)."""
-    missing = [v for v in ("GOOGLE_DRIVE_FOLDER_ID", "GOOGLE_OAUTH_CLIENT_ID",
-                           "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN")
-               if not os.environ.get(v)]
-    if missing:
-        return False, f"Variáveis ausentes no Railway: {', '.join(missing)}"
+    if not os.environ.get("GOOGLE_DRIVE_FOLDER_ID"):
+        return False, "Variável GOOGLE_DRIVE_FOLDER_ID não configurada."
+    has_sa = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
+    has_oauth = all(os.environ.get(v) for v in ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN"))
+    if not has_sa and not has_oauth:
+        return False, "Configure GOOGLE_SERVICE_ACCOUNT_JSON ou as três variáveis OAuth."
     try:
         service = _get_drive_service()
         root_folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
