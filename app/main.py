@@ -484,6 +484,11 @@ async def drive_sync_all():
     return {"uploaded": len(uploaded), "failed": len(failed), "files": uploaded, "errors": failed}
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/saved_comics/{filename}")
 async def serve_saved_comic(filename: str):
     filepath = os.path.join(get_saved_comics_dir(), filename)

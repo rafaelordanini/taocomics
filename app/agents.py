@@ -1458,37 +1458,45 @@ def _orquestrador_montar_prompt_artista(
 
 
 def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
-    CODEX_MAX_RETRIES = 2
+    # Monta lista de modelos a tentar: primário escolhido pelo usuário + fallbacks automáticos
     models_to_try = []
 
-    # Até 2 tentativas no Codex antes de cair no fallback
-    for _ in range(CODEX_MAX_RETRIES):
+    # Modelo primário escolhido pelo usuário
+    models_to_try.append(primary_model)
+
+    # Codex recebe uma segunda chance se for o modelo primário
+    if primary_model == "codex/gpt-image-2":
         models_to_try.append("codex/gpt-image-2")
 
-    # Fallback: Poe GPT-Image se Codex falhar
-    if poe_key:
-        models_to_try.append("poe/gpt-image-2")
+    # Fallbacks em cascata (somente se diferentes do primário e disponíveis)
+    fallback_chain = []
+    if poe_key and "poe/gpt-image-2" not in models_to_try:
+        fallback_chain.append("poe/gpt-image-2")
+    if o_client and "openai/gpt-image-2" not in models_to_try:
+        fallback_chain.append("openai/gpt-image-2")
+    if g_client and "google/gemini-2.5-flash-image" not in models_to_try:
+        fallback_chain.append("google/gemini-2.5-flash-image")
+    if or_client and "openrouter/google/gemini-2.5-flash-preview-05-20:free" not in models_to_try:
+        fallback_chain.append("openrouter/google/gemini-2.5-flash-preview-05-20:free")
+
+    models_to_try.extend(fallback_chain)
 
     last_error = None
     for idx, model in enumerate(models_to_try):
-        is_retry = model == "codex/gpt-image-2" and idx > 0
+        is_codex_retry = model == "codex/gpt-image-2" and idx > 0 and primary_model == "codex/gpt-image-2"
         attempt_label = f"Tentativa {idx+1}/{len(models_to_try)}"
-        if is_retry:
+        if is_codex_retry:
             sse_send(f"[Artista (Desenho)] Codex travou — reiniciando worker e tentando novamente... ({attempt_label})")
         else:
             sse_send(f"[Artista (Desenho)] Tentando gerar imagem com o modelo: {model} ({attempt_label})...")
         try:
-            if model == "openai/gpt-image-2":
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            elif model == "google/gemini-2.5-flash-image" or model == "google/imagen-4.0-generate-001":
+            if model in ("google/gemini-2.5-flash-image", "google/imagen-4.0-generate-001"):
                 res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            elif model == "pollinations/flux":
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
             elif model.startswith("openrouter/"):
                 model_id = model.replace("openrouter/", "")
                 res = _artista_fallback(or_client, prompt, model_id=model_id)
             else:
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
+                res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
 
             res["model_used"] = model
             sse_send(f"[Artista (Desenho)] Sucesso usando o modelo: {model}!")
@@ -1497,8 +1505,7 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
             err_str = str(e)
             sse_send(f"[Artista (Desenho)] Falha com o modelo {model}: {err_str}")
             last_error = e
-            # Se Codex travou, solicita restart do worker antes de tentar novamente
-            if model == "codex/gpt-image-2" and "timeout" in err_str.lower():
+            if model == "codex/gpt-image-2" and ("timeout" in err_str.lower() or "530" in err_str):
                 _restart_codex_worker()
 
     raise last_error or RuntimeError("Todos os modelos de geração de imagem falharam.")

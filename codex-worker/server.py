@@ -35,7 +35,19 @@ def _list_images():
 def _run_image_job(job_id: str, prompt: str):
     before = {fp for fp, _ in _list_images()}
     full_prompt = f"Generate an image: {prompt}. Image size 1024x1536."
-    cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", full_prompt, "--skip-git-repo-check"]
+    # --no-project-doc evita carregar histórico/contexto anterior que causaria compactação
+    cmd = [
+        CODEX_BIN,
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--no-project-doc",
+        "exec",
+        full_prompt,
+        "--skip-git-repo-check",
+    ]
+
+    env = os.environ.copy()
+    # Garante sessão limpa sem histórico de conversa acumulado
+    env.pop("CODEX_HOME", None)
 
     try:
         result = subprocess.run(
@@ -43,7 +55,8 @@ def _run_image_job(job_id: str, prompt: str):
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=300,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         # Mata processos Codex zumbis para não travar a próxima geração
@@ -57,8 +70,18 @@ def _run_image_job(job_id: str, prompt: str):
         return
 
     if result.returncode != 0:
+        stderr_snippet = result.stderr[-500:] if result.stderr else ""
+        stdout_snippet = result.stdout[-300:] if result.stdout else ""
         with jobs_lock:
-            jobs[job_id] = {"status": "error", "error": f"Codex falhou: {result.stderr[:500]}"}
+            jobs[job_id] = {"status": "error", "error": f"Codex falhou (rc={result.returncode}): {stderr_snippet} | stdout: {stdout_snippet}"}
+        return
+
+    # Detecta resposta de compactação de contexto (Codex imprime resumo em vez de gerar imagem)
+    compaction_markers = ["context compaction", "compacting context", "summarizing conversation"]
+    stdout_lower = result.stdout.lower()
+    if any(m in stdout_lower for m in compaction_markers):
+        with jobs_lock:
+            jobs[job_id] = {"status": "error", "error": "Codex entrou em modo de compactação de contexto. Execute 'pkill -f codex' na VM e tente novamente."}
         return
 
     for _ in range(20):
@@ -68,8 +91,9 @@ def _run_image_job(job_id: str, prompt: str):
             break
         time.sleep(0.5)
     else:
+        stdout_snippet = result.stdout[-300:] if result.stdout else "(vazio)"
         with jobs_lock:
-            jobs[job_id] = {"status": "error", "error": "Codex executou mas nenhuma imagem foi gerada"}
+            jobs[job_id] = {"status": "error", "error": f"Codex executou mas nenhuma imagem foi gerada. stdout: {stdout_snippet}"}
         return
 
     new_imgs.sort(key=lambda x: x[1], reverse=True)
