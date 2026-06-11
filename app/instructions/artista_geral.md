@@ -47,6 +47,10 @@ Dimensões
 
 [CRÍTICO - PROIBIÇÃO DE NÚMEROS NOS QUADRINHOS]
 - **NUNCA NUMERE OS PAINÉIS**: É terminantemente proibido desenhar números de ordem (1, 2, 3...) nos quadrinhos — em cantos, selos, etiquetas ou qualquer outro formato. A sequência de leitura é dada apenas pela posição dos painéis na página, jamais por números visíveis.
+
+[CRÍTICO - QUANTIDADE E VARIEDADE DE QUADRINHOS]
+- **ENTRE 1 E 10 QUADRINHOS POR PÁGINA**: Nunca desenhe mais de 10 painéis em uma única página.
+- **FORMATOS SEMPRE VARIADOS**: Os painéis devem ter formatos diferentes entre si — combine panorâmicos (largura total), verticais, quadrados e lado a lado. É proibido compor a página como uma grade uniforme de painéis idênticos (ex.: todos retangulares horizontais empilhados).
 Página de abertura do conto (SOMENTE A PÁGINA 1)
 - **[CRÍTICO - TÍTULO EXISTE APENAS NA PÁGINA 1]**: O título principal do conto deve aparecer ÚNICA E EXCLUSIVAMENTE na primeira página (página 1). Nenhuma outra página deve conter título, subtítulo ou cabeçalho de qualquer tipo.
 - Quando a página produzida for a página 1, ela deverá conter o título principal seguindo exatamente o mesmo estilo visual da página-modelo fornecida:

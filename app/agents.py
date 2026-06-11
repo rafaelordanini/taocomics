@@ -1553,7 +1553,23 @@ def _revisor_primary(
                 f"Se não houver título, REPROVE imediatamente.\n"
             )
     else:
-        prompt_text += f"3. Título: Esta é a página {num_pagina} — NÃO deve conter título de capa. Ignore se não houver.\n"
+        prompt_text += (
+            f"3. SEM TÍTULO — CRÍTICO: Esta é a página {num_pagina}, NÃO a página 1. "
+            f"É PROIBIDO haver título, subtítulo ou cabeçalho de capa. "
+            f"REPROVE imediatamente se houver qualquer título visível.\n"
+        )
+
+    if num_pagina == total_paginas:
+        prompt_text += (
+            f"3b. CARIMBO VERMELHO (selo 道) — esta é a ÚLTIMA página: o selo vermelho de "
+            f"assinatura DEVE estar presente (canto inferior direito).\n"
+        )
+    else:
+        prompt_text += (
+            f"3b. CARIMBO VERMELHO (selo 道) — CRÍTICO: Esta NÃO é a última página. "
+            f"É PROIBIDO haver carimbo/selo vermelho de assinatura. "
+            f"REPROVE imediatamente se houver selo vermelho nesta página.\n"
+        )
 
     prompt_text += (
         f"4. Arte Final: Se for a última página ({total_paginas}), deve evidenciar poeticamente o encerramento.\n"
@@ -1569,11 +1585,14 @@ def _revisor_primary(
         f"7. FAIXAS VAZIAS — CRÍTICO: A arte deve preencher TODA a largura e altura da página. "
         f"REPROVE se houver faixas verticais ou horizontais de cor lisa/vazia nas laterais, "
         f"topo ou rodapé (sinal de que a imagem não preencheu o canvas 2:3).\n"
+        f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: A página deve ter entre 1 e 10 quadrinhos, "
+        f"com formatos VARIADOS (panorâmicos, verticais, lado a lado — não uma grade uniforme). "
+        f"REPROVE se houver mais de 10 painéis ou se todos tiverem exatamente o mesmo formato repetido.\n"
     )
     if geral:
-        prompt_text += f"8. Instruções Gerais:\n{geral}\n"
+        prompt_text += f"9. Instruções Gerais:\n{geral}\n"
     if especifica:
-        prompt_text += f"9. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
+        prompt_text += f"10. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
 
     prompt_text += (
         "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem sem exceção. "
@@ -1663,7 +1682,21 @@ def _revisor_fallback(
                     f"Se não houver título, REPROVE imediatamente.\n"
                 )
         else:
-            prompt_text += f"3. Título: Esta é a página {num_pagina} — NÃO deve conter título de capa.\n"
+            prompt_text += (
+                f"3. SEM TÍTULO — CRÍTICO: Esta é a página {num_pagina}, NÃO a página 1. "
+                f"REPROVE imediatamente se houver qualquer título visível.\n"
+            )
+
+        if num_pagina == total_paginas:
+            prompt_text += (
+                f"3b. CARIMBO VERMELHO (selo 道) — última página: DEVE estar presente "
+                f"(canto inferior direito).\n"
+            )
+        else:
+            prompt_text += (
+                f"3b. CARIMBO VERMELHO (selo 道) — CRÍTICO: NÃO é a última página. "
+                f"REPROVE imediatamente se houver selo vermelho de assinatura.\n"
+            )
 
         prompt_text += (
             f"4. Arte Final: Última página deve evidenciar poeticamente o encerramento.\n"
@@ -1675,11 +1708,13 @@ def _revisor_fallback(
             f"ordem (1, 2, 3...) em cantos, selos ou etiquetas.\n"
             f"7. FAIXAS VAZIAS — CRÍTICO: REPROVE se houver faixas de cor lisa/vazia nas laterais, "
             f"topo ou rodapé (arte deve preencher todo o canvas 2:3).\n"
+            f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: Entre 1 e 10 quadrinhos por página, com "
+            f"formatos VARIADOS. REPROVE se houver mais de 10 painéis ou grade uniforme repetida.\n"
         )
         if geral:
-            prompt_text += f"8. Instruções Gerais:\n{geral}\n"
+            prompt_text += f"9. Instruções Gerais:\n{geral}\n"
         if especifica:
-            prompt_text += f"9. Instrução Específica (PRIORIDADE):\n{especifica}\n"
+            prompt_text += f"10. Instrução Específica (PRIORIDADE):\n{especifica}\n"
 
         prompt_text += (
             "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem. "

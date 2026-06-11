@@ -22,6 +22,8 @@ Cada página gerada deve parecer uma página de uma graphic novel filosófica or
 - Evitar cores saturadas modernas. A paleta deve parecer tinta natural aplicada em papel antigo.
 
 ## Layout dos Painéis
+- **QUANTIDADE: entre 1 e 10 painéis por página** — nunca planeje mais de 10.
+- **PROIBIDO numerar os painéis**: a ordem de leitura vem da posição, nunca de números desenhados.
 - Misture obrigatoriamente painéis de tamanhos diferentes:
   - **Um painel panorâmico largo** (full-width) no topo ou no fundo — ideal para cenas de paisagem grandiosa ou cenas de abertura/encerramento.
   - **Dois painéis side-by-side** no meio — um para personagem, outro para símbolo/natureza.
