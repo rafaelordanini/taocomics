@@ -212,9 +212,14 @@ async function refreshGallery() {
                     </div>
                     <div class="comic-info">
                         <span class="comic-title">${displayName}</span>
-                        <a href="/saved_comics/${imgName}?t=${timestamp}" download="${imgName}" class="btn-icon" title="Baixar imagem">
-                            <span class="material-icons-round">download</span>
-                        </a>
+                        <div class="comic-actions">
+                            <a href="/saved_comics/${imgName}?t=${timestamp}" download="${imgName}" class="btn-icon" title="Baixar imagem">
+                                <span class="material-icons-round">download</span>
+                            </a>
+                            <button class="btn-icon btn-delete" title="Excluir imagem" onclick="deleteComic('${imgName}', '${displayName}')">
+                                <span class="material-icons-round">delete</span>
+                            </button>
+                        </div>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -222,6 +227,177 @@ async function refreshGallery() {
         }
     } catch (err) {
         console.error("Erro ao carregar a galeria:", err);
+    }
+}
+
+// Exclui permanentemente uma imagem gerada
+async function deleteComic(imgName, displayName) {
+    if (!confirm(`Excluir "${displayName}"?\n\nEsta ação remove o arquivo permanentemente e não pode ser desfeita.`)) {
+        return;
+    }
+    try {
+        const res = await fetch(`/api/comics/${encodeURIComponent(imgName)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.error) {
+            alert("Erro ao excluir: " + data.error);
+            return;
+        }
+        await refreshGallery();
+    } catch (err) {
+        console.error("Erro ao excluir a imagem:", err);
+        alert("Erro ao excluir a imagem.");
+    }
+}
+
+// ----------------------------------------------------------------------
+// Explorador de Arquivos — navega pastas, pareceres e imagens do servidor
+// ----------------------------------------------------------------------
+let browserCurrentPath = "";
+
+function openFileBrowser() {
+    document.getElementById("browser-modal").style.display = "flex";
+    browseTo("");
+}
+
+function closeFileBrowser() {
+    document.getElementById("browser-modal").style.display = "none";
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+async function browseTo(path) {
+    browserCurrentPath = path;
+    const viewer = document.getElementById("browser-viewer");
+    viewer.style.display = "none";
+    viewer.innerHTML = "";
+    const listEl = document.getElementById("browser-list");
+    listEl.style.display = "block";
+    listEl.innerHTML = `<div class="browser-loading">Carregando...</div>`;
+
+    try {
+        const res = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
+        const data = await res.json();
+        renderBreadcrumb(data.path || "");
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-loading">Erro: ${data.error}</div>`;
+            return;
+        }
+        if (!data.entries || data.entries.length === 0) {
+            listEl.innerHTML = `<div class="browser-loading">Pasta vazia.</div>`;
+            return;
+        }
+        listEl.innerHTML = "";
+        data.entries.forEach(entry => {
+            const row = document.createElement("div");
+            row.className = "browser-row";
+            let icon, meta, onclick;
+            if (entry.type === "dir") {
+                icon = "folder";
+                meta = `${entry.count} ${entry.count === 1 ? "item" : "itens"}`;
+                onclick = `browseTo('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}')`;
+            } else if (entry.is_image) {
+                icon = "image";
+                meta = formatSize(entry.size);
+                onclick = `viewBrowserImage('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}')`;
+            } else if (entry.is_text) {
+                icon = "description";
+                meta = formatSize(entry.size);
+                onclick = `viewBrowserText('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}')`;
+            } else {
+                icon = "insert_drive_file";
+                meta = formatSize(entry.size);
+                onclick = "";
+            }
+            row.innerHTML = `
+                <div class="browser-row-main" onclick="${onclick}">
+                    <span class="material-icons-round browser-icon ${entry.type === 'dir' ? 'is-dir' : ''}">${icon}</span>
+                    <span class="browser-name">${entry.name}</span>
+                    <span class="browser-meta">${meta}</span>
+                </div>
+                <button class="btn-icon btn-delete" title="Excluir" onclick="deleteBrowserEntry('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}', ${entry.type === 'dir'})">
+                    <span class="material-icons-round">delete</span>
+                </button>
+            `;
+            listEl.appendChild(row);
+        });
+    } catch (err) {
+        console.error("Erro ao navegar:", err);
+        listEl.innerHTML = `<div class="browser-loading">Erro ao carregar.</div>`;
+    }
+}
+
+function renderBreadcrumb(path) {
+    const bc = document.getElementById("browser-breadcrumb");
+    const parts = path ? path.split("/") : [];
+    let html = `<span class="crumb" onclick="browseTo('')">saved_comics</span>`;
+    let acc = "";
+    parts.forEach(part => {
+        acc = acc ? acc + "/" + part : part;
+        html += ` <span class="crumb-sep">/</span> <span class="crumb" onclick="browseTo('${acc.replace(/'/g, "\\'")}')">${part}</span>`;
+    });
+    bc.innerHTML = html;
+}
+
+async function viewBrowserText(path, name) {
+    const listEl = document.getElementById("browser-list");
+    const viewer = document.getElementById("browser-viewer");
+    listEl.style.display = "none";
+    viewer.style.display = "block";
+    viewer.innerHTML = `<div class="browser-loading">Carregando...</div>`;
+    try {
+        const res = await fetch(`/api/browse-file?path=${encodeURIComponent(path)}`);
+        const data = await res.json();
+        const content = data.error ? ("Erro: " + data.error) : data.content;
+        viewer.innerHTML = `
+            <div class="viewer-header">
+                <button class="btn-icon" onclick="browseTo(browserCurrentPath)" title="Voltar"><span class="material-icons-round">arrow_back</span></button>
+                <span class="viewer-title">${name}</span>
+            </div>
+            <pre class="viewer-text"></pre>
+        `;
+        viewer.querySelector(".viewer-text").textContent = content;
+    } catch (err) {
+        viewer.innerHTML = `<div class="browser-loading">Erro ao abrir o arquivo.</div>`;
+    }
+}
+
+function viewBrowserImage(path, name) {
+    const listEl = document.getElementById("browser-list");
+    const viewer = document.getElementById("browser-viewer");
+    listEl.style.display = "none";
+    viewer.style.display = "block";
+    viewer.innerHTML = `
+        <div class="viewer-header">
+            <button class="btn-icon" onclick="browseTo(browserCurrentPath)" title="Voltar"><span class="material-icons-round">arrow_back</span></button>
+            <span class="viewer-title">${name}</span>
+            <a href="/api/browse-raw?path=${encodeURIComponent(path)}" download="${name}" class="btn-icon" title="Baixar"><span class="material-icons-round">download</span></a>
+        </div>
+        <img class="viewer-image" src="/api/browse-raw?path=${encodeURIComponent(path)}&t=${Date.now()}" alt="${name}">
+    `;
+}
+
+async function deleteBrowserEntry(path, name, isDir) {
+    const tipo = isDir ? "a pasta" : "o arquivo";
+    const extra = isDir ? "\n\nTODO o conteúdo da pasta será removido." : "";
+    if (!confirm(`Excluir ${tipo} "${name}"?${extra}\n\nEsta ação é permanente e não pode ser desfeita.`)) {
+        return;
+    }
+    try {
+        const res = await fetch(`/api/browse?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.error) {
+            alert("Erro ao excluir: " + data.error);
+            return;
+        }
+        await browseTo(browserCurrentPath);
+        refreshGallery();
+    } catch (err) {
+        console.error("Erro ao excluir:", err);
+        alert("Erro ao excluir.");
     }
 }
 

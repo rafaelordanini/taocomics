@@ -1,9 +1,10 @@
 import os
 import queue
+import shutil
 import threading
 import logging
 from pydantic import BaseModel
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -385,6 +386,129 @@ async def list_comics():
         images = [f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         images.sort()
         return {"images": images}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/api/comics/{filename}")
+async def delete_comic(filename: str):
+    """Apaga uma imagem gerada do diretório saved_comics."""
+    # Bloqueia path traversal — só aceita o nome do arquivo, sem barras
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return {"error": "Nome de arquivo inválido."}
+    filepath = os.path.join(get_saved_comics_dir(), filename)
+    if not os.path.exists(filepath):
+        return {"error": "Arquivo não encontrado."}
+    try:
+        os.remove(filepath)
+        return {"status": "success", "deleted": filename}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# --------------------------------------------------------------------------
+# Explorador de arquivos — navega toda a árvore de saved_comics (pastas,
+# pareceres de texto, imagens) e permite excluir do servidor pelo navegador.
+# --------------------------------------------------------------------------
+
+def _safe_resolve(rel_path: str) -> str | None:
+    """Resolve um caminho relativo dentro de saved_comics, bloqueando path traversal.
+    Retorna o caminho absoluto ou None se for inválido/fora da base."""
+    base = os.path.abspath(get_saved_comics_dir())
+    rel_path = (rel_path or "").strip().lstrip("/")
+    target = os.path.abspath(os.path.join(base, rel_path))
+    # Garante que o alvo está estritamente dentro da base (ou é a própria base)
+    if target != base and not target.startswith(base + os.sep):
+        return None
+    return target
+
+
+@app.get("/api/browse")
+async def browse_files(path: str = Query("")):
+    """Lista pastas e arquivos em um nível da árvore de saved_comics."""
+    target = _safe_resolve(path)
+    if target is None or not os.path.isdir(target):
+        return {"error": "Caminho inválido ou inexistente.", "entries": []}
+
+    base = os.path.abspath(get_saved_comics_dir())
+    rel = os.path.relpath(target, base)
+    rel = "" if rel == "." else rel
+    parent = "" if rel == "" else os.path.dirname(rel)
+
+    image_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+    text_exts = (".txt", ".json", ".md")
+    entries = []
+    try:
+        for name in sorted(os.listdir(target)):
+            if name.startswith("."):
+                continue
+            full = os.path.join(target, name)
+            entry_rel = os.path.join(rel, name) if rel else name
+            if os.path.isdir(full):
+                try:
+                    count = len([n for n in os.listdir(full) if not n.startswith(".")])
+                except Exception:
+                    count = 0
+                entries.append({"name": name, "path": entry_rel, "type": "dir", "count": count})
+            else:
+                lower = name.lower()
+                size = os.path.getsize(full)
+                entries.append({
+                    "name": name,
+                    "path": entry_rel,
+                    "type": "file",
+                    "is_image": lower.endswith(image_exts),
+                    "is_text": lower.endswith(text_exts),
+                    "size": size,
+                })
+    except Exception as e:
+        return {"error": str(e), "entries": []}
+
+    # Pastas primeiro, depois arquivos
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    return {"path": rel, "parent": parent, "entries": entries}
+
+
+@app.get("/api/browse-file")
+async def browse_file_content(path: str = Query("")):
+    """Retorna o conteúdo de um arquivo de texto (parecer, roteiro, prompt)."""
+    target = _safe_resolve(path)
+    if target is None or not os.path.isfile(target):
+        return {"error": "Arquivo inválido ou inexistente."}
+    if os.path.getsize(target) > 2 * 1024 * 1024:
+        return {"error": "Arquivo muito grande para visualização."}
+    try:
+        with open(target, "r", encoding="utf-8", errors="replace") as f:
+            return {"content": f.read()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/browse-raw")
+async def browse_file_raw(path: str = Query("")):
+    """Serve um arquivo binário (imagem) de qualquer nível da árvore."""
+    target = _safe_resolve(path)
+    if target is None or not os.path.isfile(target):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return FileResponse(target)
+
+
+@app.delete("/api/browse")
+async def delete_browse_entry(path: str = Query("")):
+    """Exclui um arquivo OU uma pasta (recursivo) dentro de saved_comics."""
+    target = _safe_resolve(path)
+    base = os.path.abspath(get_saved_comics_dir())
+    if target is None or target == base:
+        return {"error": "Caminho inválido."}
+    if not os.path.exists(target):
+        return {"error": "Caminho não encontrado."}
+    try:
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+        return {"status": "success", "deleted": path}
     except Exception as e:
         return {"error": str(e)}
 

@@ -226,6 +226,7 @@
             <section class="output-gallery glass-card">
                 <div class="gallery-header">
                     <h2><span class="material-icons-round">collections</span> Páginas Geradas</h2>
+                    <button id="btn-browse" class="btn-icon" onclick="openFileBrowser()" title="Explorar Arquivos"><span class="material-icons-round">folder_open</span></button>
                     <button id="btn-refresh" class="btn-icon" onclick="refreshGallery()" title="Atualizar Galeria"><span class="material-icons-round">refresh</span></button>
                     <button id="btn-clear" class="btn-icon" onclick="clearGallery()" title="Limpar Galeria"><span class="material-icons-round">delete_sweep</span></button>
                 </div>
@@ -253,6 +254,19 @@
                     Editar Página
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal Explorador de Arquivos -->
+    <div id="browser-modal" class="modal" onclick="closeFileBrowser(event)">
+        <div class="modal-card glass-card animate-zoom" style="max-width: 760px; width: 92%; padding: 1.6rem; max-height: 86vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+            <span class="close-modal" onclick="closeFileBrowser()">&times;</span>
+            <h3 style="font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 8px; margin-bottom: 0.6rem;">
+                <span class="material-icons-round">folder_open</span> Explorador de Arquivos
+            </h3>
+            <div id="browser-breadcrumb" class="browser-breadcrumb"></div>
+            <div id="browser-list" class="browser-list"></div>
+            <div id="browser-viewer" class="browser-viewer" style="display:none;"></div>
         </div>
     </div>
 
