@@ -14,30 +14,33 @@ _folder_cache: dict[str, str] = {}
 def _get_drive_service():
     from googleapiclient.discovery import build
 
-    # Prefere Service Account (não expira) quando disponível
-    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if sa_json:
-        import json
-        from google.oauth2.service_account import Credentials as SACredentials
-        info = json.loads(sa_json)
-        creds = SACredentials.from_service_account_info(
-            info, scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        return build("drive", "v3", credentials=creds)
-
-    # Fallback: OAuth user credentials
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
-
+    # Prefere OAuth (grava na cota pessoal de 15GB do usuário).
+    # Service Account NÃO funciona com Drive pessoal gratuito: não tem cota
+    # própria e exige Shared Drive (Google Workspace pago).
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
     client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
     refresh_token = os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN")
+    has_oauth = all([client_id, client_secret, refresh_token])
 
-    if not all([client_id, client_secret, refresh_token]):
+    if not has_oauth:
+        # Sem OAuth completo: tenta Service Account apenas se houver
+        sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+        if sa_json:
+            import json
+            from google.oauth2.service_account import Credentials as SACredentials
+            info = json.loads(sa_json)
+            creds = SACredentials.from_service_account_info(
+                info, scopes=["https://www.googleapis.com/auth/drive"]
+            )
+            return build("drive", "v3", credentials=creds)
         raise RuntimeError(
-            "Configure GOOGLE_SERVICE_ACCOUNT_JSON ou as três variáveis OAuth "
-            "(GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN)"
+            "Configure as três variáveis OAuth (GOOGLE_OAUTH_CLIENT_ID, "
+            "GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN). "
+            "Service Account não funciona com Google Drive pessoal gratuito."
         )
+
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
 
     creds = Credentials(
         token=None,
