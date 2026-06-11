@@ -160,41 +160,52 @@ def extract_content_from_gemini(response) -> str:
         raise RuntimeError("O texto da resposta do Gemini retornou None.")
     return text.strip()
 
+def _amostrar_cor_borda(image: Image.Image) -> tuple:
+    """Amostra a cor média das bordas da imagem (para preencher com o tom do pergaminho)."""
+    img_rgb = image.convert("RGB")
+    w, h = img_rgb.size
+    pixels = []
+    strip = max(1, min(w, h) // 100)
+    for x in range(0, w, max(1, w // 50)):
+        for y in list(range(0, strip)) + list(range(h - strip, h)):
+            pixels.append(img_rgb.getpixel((x, y)))
+    for y in range(0, h, max(1, h // 50)):
+        for x in list(range(0, strip)) + list(range(w - strip, w)):
+            pixels.append(img_rgb.getpixel((x, y)))
+    if not pixels:
+        return (222, 206, 170)  # tom de pergaminho padrão
+    r = sum(p[0] for p in pixels) // len(pixels)
+    g = sum(p[1] for p in pixels) // len(pixels)
+    b = sum(p[2] for p in pixels) // len(pixels)
+    return (r, g, b)
+
+
 def resize_and_pad_image_to_target(image: Image.Image, target_width: int = 1024, target_height: int = 1536, is_page_1: bool = False) -> Image.Image:
     """
-    Redimensiona a imagem mantendo a proporção original e corta os excessos (crop)
-    para preencher completamente as dimensões especificadas (por padrão 1024x1536),
-    garantindo que não haja faixas pretas nas laterais (pillarboxing) ou no topo/rodapé (letterboxing).
-    Se for a página 1 (contendo o título principal no topo), o corte vertical preserva o topo
-    (corta apenas 10% do excesso no topo e 90% no rodapé), evitando cortar o título.
+    Redimensiona a imagem mantendo a proporção original SEM CORTAR NADA (estilo "contain").
+    Se a proporção for diferente de 2:3, a imagem inteira é redimensionada para caber
+    dentro de 1024x1536 e as faixas restantes são preenchidas com a cor do pergaminho
+    (amostrada das bordas da própria imagem), preservando títulos e painéis completos.
+    O crop antigo era a causa de títulos e quadrinhos cortados.
     """
     orig_width, orig_height = image.size
     if orig_width == target_width and orig_height == target_height:
         return image
 
-    # Calcula a escala para cobrir toda a área de destino (estilo crop/cobertura total)
-    ratio = max(target_width / orig_width, target_height / orig_height)
+    # Calcula a escala para CABER inteiramente na área de destino (sem corte)
+    ratio = min(target_width / orig_width, target_height / orig_height)
     new_width = int(orig_width * ratio)
     new_height = int(orig_height * ratio)
 
-    # Redimensiona a imagem usando filtro de alta qualidade
-    resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS).convert("RGB")
 
-    # Corta para obter as dimensões exatas
-    left = (new_width - target_width) // 2
-    
-    if is_page_1:
-        # Se for a página 1, preserva o topo (corta apenas 10% do excesso no topo e o resto embaixo)
-        excess_height = new_height - target_height
-        top = int(excess_height * 0.10)
-    else:
-        # Nas demais páginas, faz corte centralizado padrão (50% topo, 50% rodapé)
-        top = (new_height - target_height) // 2
-        
-    right = left + target_width
-    bottom = top + target_height
-
-    return resized_image.crop((left, top, right, bottom))
+    # Preenche o fundo com a cor do pergaminho amostrada das bordas da imagem
+    bg_color = _amostrar_cor_borda(resized_image)
+    canvas = Image.new("RGB", (target_width, target_height), bg_color)
+    offset_x = (target_width - new_width) // 2
+    offset_y = (target_height - new_height) // 2
+    canvas.paste(resized_image, (offset_x, offset_y))
+    return canvas
 
 
 # --------------------------
