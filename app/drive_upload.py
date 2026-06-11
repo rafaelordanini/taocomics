@@ -101,10 +101,10 @@ def upload_file_to_drive(filepath: str) -> str | None:
     if not root_folder_id:
         logger.warning("[drive] GOOGLE_DRIVE_FOLDER_ID não configurado — upload ignorado.")
         return None
-    if not all([os.environ.get("GOOGLE_OAUTH_CLIENT_ID"),
-                os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"),
-                os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN")]):
-        logger.warning("[drive] Credenciais OAuth incompletas — upload ignorado.")
+    has_sa = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
+    has_oauth = all(os.environ.get(v) for v in ("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REFRESH_TOKEN"))
+    if not has_sa and not has_oauth:
+        logger.warning("[drive] Credenciais não configuradas (GOOGLE_SERVICE_ACCOUNT_JSON ou OAuth) — upload ignorado.")
         return None
 
     try:
