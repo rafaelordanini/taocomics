@@ -10,7 +10,11 @@ from pydantic import BaseModel
 app = FastAPI()
 
 AUTH_TOKEN = os.environ.get("WORKER_TOKEN", "")
-CODEX_BIN = os.path.expanduser("~/.local/bin/codex")
+CODEX_BIN = (
+    os.path.expanduser("~/.local/bin/codex")
+    if os.path.exists(os.path.expanduser("~/.local/bin/codex"))
+    else "/usr/local/bin/codex"
+)
 GEN_DIR = os.path.expanduser("~/.codex/generated_images")
 
 # job_id -> {"status": "pending"|"done"|"error", "b64_json": str, "error": str}

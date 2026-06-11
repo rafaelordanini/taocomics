@@ -704,36 +704,36 @@ def _generar_imagem_poe(prompt: str, api_key: str = None) -> dict:
     key = api_key or os.getenv("POE_API_KEY") or "sk-poe-5dU7XMSEIjUgZsYWFt-n47g5GwOgXazF7b0k95TYATk"
     client = openai.OpenAI(
         api_key=key,
-        base_url="https://api.poe.com/v1"
+        base_url="https://api.poe.com/v1",
+        timeout=300.0,  # Poe pode demorar até 5 min para gerar imagem
     )
-    
+
     full_prompt = f"Generate an image: {prompt}. Image size must be 1024x1536. Please provide the image."
-    
-    response = client.chat.completions.create(
-        model="gpt-image-2",
-        messages=[{"role": "user", "content": full_prompt}],
-        timeout=120.0
-    )
-    
-    content = response.choices[0].message.content or ""
-    match = re.search(r"!\[.*?\]\((https?://[^\)]+)\)", content)
-    if not match:
-        match = re.search(r"(https?://[^\s\)]+)", content)
-        
-    if not match:
-        raise ValueError(f"Não foi possível encontrar a URL da imagem na resposta do Poe. Resposta: {content}")
-        
-    img_url = match.group(1)
-    
-    import httpx
-    img_resp = httpx.get(img_url, timeout=60.0)
-    img_resp.raise_for_status()
-    
-    b64_data = base64.b64encode(img_resp.content).decode("utf-8")
-    return {
-        "url": img_url,
-        "b64_json": b64_data
-    }
+
+    last_err = None
+    for attempt in range(2):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-image-2",
+                messages=[{"role": "user", "content": full_prompt}],
+            )
+            content = response.choices[0].message.content or ""
+            match = re.search(r"!\[.*?\]\((https?://[^\)]+)\)", content)
+            if not match:
+                match = re.search(r"(https?://[^\s\)\"]+)", content)
+            if not match:
+                raise ValueError(f"URL da imagem não encontrada na resposta do Poe. Resposta: {content[:300]}")
+            img_url = match.group(1)
+            img_resp = httpx.get(img_url, timeout=120.0)
+            img_resp.raise_for_status()
+            b64_data = base64.b64encode(img_resp.content).decode("utf-8")
+            return {"url": img_url, "b64_json": b64_data}
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                time.sleep(5)
+
+    raise last_err
 
 
 # --------------------------
