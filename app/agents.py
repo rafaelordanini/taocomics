@@ -1405,6 +1405,8 @@ def _montar_prompt_artista_dsl(
     instrucao = (
         "Render this comic page from the structured JSON spec below. "
         "Draw every panel in 'panels' in order, using the shared 'style'. "
+        "IMPORTANT: the panel order/indices are READING ORDER ONLY — NEVER draw numbers, "
+        "digits or order labels on the panels. No panel may display a visible number. "
         "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
         "Apply all items in 'fixes' as corrections. JSON spec:\n"
     )
@@ -1436,7 +1438,7 @@ def _orquestrador_montar_prompt_artista(
 
     # Legado: prompt em texto livre (compatibilidade com prompts antigos cacheados)
     base = _comprimir_prompt_designer(g_client, prompt_designer)
-    parts = [base, "Draw 6-10 comic panels per page with varied layout. Include speech bubbles and narrative boxes."]
+    parts = [base, "Draw 1-10 comic panels per page with varied layout. Include speech bubbles and narrative boxes. NEVER draw numbers or order labels on the panels — reading order comes from position only."]
 
     corrections = []
     if feedback_revisor:
@@ -1519,6 +1521,55 @@ def _restart_codex_worker():
 # --------------------------
 # 4. Agente Revisor
 # --------------------------
+
+def _verificacao_focada_pagina(g_client, image: Image.Image, num_pagina: int, total_paginas: int) -> list:
+    """
+    Verificação focada com perguntas binárias diretas (mais confiável que checklist longa).
+    A IA só OBSERVA; quem decide aprovação/reprovação é o código.
+    Retorna lista de violações (vazia = passou). Em caso de falha da chamada, retorna [].
+    """
+    try:
+        prompt = (
+            "Look at this comic page image and answer ONLY with a strict JSON object, no prose:\n"
+            '{"numeros_visiveis": true/false, "titulo_presente": true/false, "selo_vermelho_presente": true/false}\n\n'
+            "- numeros_visiveis: are there visible order numbers/digits (1, 2, 3...) drawn on or near "
+            "the corners of any panel (small numbered tags/labels marking panel order)?\n"
+            "- titulo_presente: is there a large title/headline text at the top of the page (cover-style title)?\n"
+            "- selo_vermelho_presente: is there a red square seal/stamp (Chinese signature seal) anywhere on the page?"
+        )
+        response = g_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[image, prompt],
+        )
+        texto = (response.text or "").strip()
+        # Extrai o JSON da resposta
+        inicio = texto.find("{")
+        fim = texto.rfind("}")
+        if inicio == -1 or fim == -1:
+            return []
+        dados = json.loads(texto[inicio:fim + 1])
+
+        violacoes = []
+        if dados.get("numeros_visiveis"):
+            violacoes.append(
+                "PAINÉIS NUMERADOS: há números de ordem visíveis nos quadrinhos. "
+                "Redesenhe SEM nenhum número, dígito ou etiqueta de ordem nos painéis."
+            )
+        if num_pagina != 1 and dados.get("titulo_presente"):
+            violacoes.append(
+                f"TÍTULO INDEVIDO: esta é a página {num_pagina} e há um título de capa. "
+                "O título só pode existir na página 1. Redesenhe sem título."
+            )
+        if num_pagina != total_paginas and dados.get("selo_vermelho_presente"):
+            violacoes.append(
+                "SELO VERMELHO INDEVIDO: o carimbo vermelho 道 só pode aparecer na última "
+                f"página ({total_paginas}). Redesenhe sem o selo vermelho."
+            )
+        return violacoes
+    except Exception as e:
+        logging.warning(f"[verificacao_focada] Falha na verificação focada da página {num_pagina}: {e}")
+        return []
+
 
 def _revisor_primary(
     client,
@@ -3303,12 +3354,26 @@ def processar_conto_taoista(
 
                 # Garante que a imagem final está exatamente no formato vertical 1024x1536 (2:3)
                 imagem_final = resize_and_pad_image_to_target(imagem_raw, is_page_1=(i == 1))
+
+                # PORTÃO FOCADO: perguntas binárias diretas à IA de visão (números nos
+                # painéis, título indevido, selo fora da última página). O código decide.
+                sse_send(f"[Sistema] Verificação focada da página {i} (números/título/selo)...")
+                _violacoes = _verificacao_focada_pagina(g_client, imagem_final, i, total_paginas)
+                if _violacoes:
+                    revisao_aprovada = False
+                    _msg_v = " | ".join(_violacoes)
+                    feedback_revisor = f"REPROVADO AUTOMATICAMENTE PELO SISTEMA: {_msg_v}"
+                    feedbacks_cumulativos.append(f"T{tentativa_revisao}: {_msg_v[:200]}")
+                    _salvar_imagem_rejeitada(imagem_final, tale_dir, i, f"rejeitada_focada_tentativa_{tentativa_revisao}", model_id=model_used)
+                    sse_send(f"[Sistema] ✗ Página {i} REPROVADA na verificação focada: {_msg_v}")
+                    continue
+
                 try:
                     filepath_temp = filepath.replace(".png", "_temp.png")
                     imagem_final.save(filepath_temp)
                 except Exception as e_save_temp:
                     sse_send(f"[Sistema] Aviso: Não foi possível salvar a imagem temporária para o Líder: {str(e_save_temp)}")
-                
+
                 # 4. Revisor valida
                 sse_send(f"[Revisor] Inspecionando imagem e textos da página {i}...")
                 
