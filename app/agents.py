@@ -3627,6 +3627,39 @@ def processar_conto_taoista(
                     sse_send(f"[Sistema] Erro na página {page_num}: {str(e)}")
 
     sse_send(f"[Sistema] Finalizado! Todas as {total_paginas} páginas salvas no diretório com sucesso.")
+
+    # Gera o fluxograma visual do pipeline usado para criar o conto
+    if paginas_salvas:
+        try:
+            sse_send("[Sistema] Gerando o fluxograma do processo de criação...")
+            from app.flowchart import gerar_fluxograma
+            fluxo_filename = f"{tale_folder_name}_fluxograma.png"
+            fluxo_path = os.path.join(output_dir, fluxo_filename)
+            resultado_fluxo = gerar_fluxograma(
+                titulo=titulo,
+                total_paginas=total_paginas,
+                artista_model=artista_model,
+                output_path=fluxo_path,
+            )
+            if resultado_fluxo:
+                # Cópia também na pasta do conto, para o explorador de arquivos
+                try:
+                    import shutil
+                    shutil.copy(fluxo_path, os.path.join(tale_dir, "fluxograma.png"))
+                except Exception:
+                    pass
+                try:
+                    from app.drive_upload import upload_file_to_drive
+                    upload_file_to_drive(fluxo_path)
+                except Exception:
+                    pass
+                paginas_salvas.append(fluxo_filename)
+                sse_send(f"[Sistema] ✓ Fluxograma do conto gerado: {fluxo_filename}")
+            else:
+                sse_send("[Sistema] Aviso: não foi possível gerar o fluxograma.")
+        except Exception as e:
+            sse_send(f"[Sistema] Aviso: falha ao gerar o fluxograma: {str(e)}")
+
     return paginas_salvas
 
 
