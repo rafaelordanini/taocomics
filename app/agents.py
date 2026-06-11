@@ -1563,11 +1563,17 @@ def _revisor_primary(
         f"REPROVE imediatamente se houver QUALQUER painel cortado, mesmo que parcialmente. "
         f"Cada quadrinho deve estar 100% completo e visível dentro da página. "
         f"Descreva exatamente qual painel está cortado (posição: superior/inferior/esquerda/direita) para o artista corrigir.\n"
+        f"6. NÚMEROS NOS QUADRINHOS — CRÍTICO: Os painéis NÃO podem exibir números de ordem "
+        f"(1, 2, 3...) em cantos, selos ou etiquetas. REPROVE imediatamente se qualquer painel "
+        f"estiver numerado, indicando quais painéis têm números.\n"
+        f"7. FAIXAS VAZIAS — CRÍTICO: A arte deve preencher TODA a largura e altura da página. "
+        f"REPROVE se houver faixas verticais ou horizontais de cor lisa/vazia nas laterais, "
+        f"topo ou rodapé (sinal de que a imagem não preencheu o canvas 2:3).\n"
     )
     if geral:
-        prompt_text += f"6. Instruções Gerais:\n{geral}\n"
+        prompt_text += f"8. Instruções Gerais:\n{geral}\n"
     if especifica:
-        prompt_text += f"7. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
+        prompt_text += f"9. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
 
     prompt_text += (
         "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem sem exceção. "
@@ -1665,11 +1671,15 @@ def _revisor_fallback(
             f"Um painel está CORTADO quando qualquer parte da cena, personagem, borda ou moldura "
             f"é truncada pela borda da imagem. REPROVE se houver QUALQUER painel cortado. "
             f"Descreva qual painel está cortado (posição na página) para o artista corrigir.\n"
+            f"6. NÚMEROS NOS QUADRINHOS — CRÍTICO: REPROVE se qualquer painel exibir números de "
+            f"ordem (1, 2, 3...) em cantos, selos ou etiquetas.\n"
+            f"7. FAIXAS VAZIAS — CRÍTICO: REPROVE se houver faixas de cor lisa/vazia nas laterais, "
+            f"topo ou rodapé (arte deve preencher todo o canvas 2:3).\n"
         )
         if geral:
-            prompt_text += f"6. Instruções Gerais:\n{geral}\n"
+            prompt_text += f"8. Instruções Gerais:\n{geral}\n"
         if especifica:
-            prompt_text += f"7. Instrução Específica (PRIORIDADE):\n{especifica}\n"
+            prompt_text += f"9. Instrução Específica (PRIORIDADE):\n{especifica}\n"
 
         prompt_text += (
             "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem. "
@@ -3236,7 +3246,26 @@ def processar_conto_taoista(
                     imagem_raw = Image.open(io.BytesIO(response.content))
                 else:
                     raise ValueError("Nenhum dado de imagem válido (URL ou B64) retornado pelo Artista.")
-                
+
+                # PORTÃO DETERMINÍSTICO: rejeita automaticamente imagem com proporção errada
+                # (sem depender do Revisor). Tolerância de 5% sobre a proporção 2:3.
+                _w, _h = imagem_raw.size
+                _ratio_alvo = 1024 / 1536
+                _desvio = abs((_w / _h) - _ratio_alvo) / _ratio_alvo
+                if _desvio > 0.05:
+                    revisao_aprovada = False
+                    _msg_ratio = (
+                        f"REPROVADO AUTOMATICAMENTE PELO SISTEMA: a imagem veio com {_w}x{_h} "
+                        f"(proporção {_w/_h:.3f}), mas a página DEVE ter proporção vertical 2:3 "
+                        f"(ex.: 1024x1536). Redesenhe a página inteira preenchendo TODO o canvas "
+                        f"vertical 2:3, sem faixas vazias nas laterais."
+                    )
+                    feedback_revisor = _msg_ratio
+                    feedbacks_cumulativos.append(f"T{tentativa_revisao}: proporção errada ({_w}x{_h})")
+                    _salvar_imagem_rejeitada(imagem_raw, tale_dir, i, f"rejeitada_proporcao_tentativa_{tentativa_revisao}", model_id=model_used)
+                    sse_send(f"[Sistema] ✗ Página {i} REPROVADA automaticamente: proporção {_w}x{_h} fora do padrão 2:3 (desvio {_desvio*100:.1f}%). O Artista vai redesenhar.")
+                    continue
+
                 # Garante que a imagem final está exatamente no formato vertical 1024x1536 (2:3)
                 imagem_final = resize_and_pad_image_to_target(imagem_raw, is_page_1=(i == 1))
                 try:

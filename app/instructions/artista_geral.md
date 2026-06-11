@@ -44,6 +44,9 @@ Dimensões
 - **PLANEJAR O LAYOUT ANTES DE DESENHAR**: Antes de compor a página, calcule mentalmente o espaço disponível e distribua os quadrinhos de modo que todos caibam completamente dentro dos limites de 1024×1536 px. Se o número de painéis exigir, reduza o tamanho de cada um — nunca corte.
 - **MARGEM DE SEGURANÇA DE PAINÉIS**: Cada painel deve terminar a pelo menos 10 px das bordas da imagem. Nenhuma moldura, borda ou conteúdo de painel deve tocar ou ultrapassar as extremidades da imagem.
 - **VERIFICAÇÃO INTERNA OBRIGATÓRIA**: Antes de finalizar a geração, verifique internamente se todos os painéis estão visíveis e completos. Se detectar que algum painel seria cortado, reorganize o layout até que todos caibam inteiros.
+
+[CRÍTICO - PROIBIÇÃO DE NÚMEROS NOS QUADRINHOS]
+- **NUNCA NUMERE OS PAINÉIS**: É terminantemente proibido desenhar números de ordem (1, 2, 3...) nos quadrinhos — em cantos, selos, etiquetas ou qualquer outro formato. A sequência de leitura é dada apenas pela posição dos painéis na página, jamais por números visíveis.
 Página de abertura do conto (SOMENTE A PÁGINA 1)
 - **[CRÍTICO - TÍTULO EXISTE APENAS NA PÁGINA 1]**: O título principal do conto deve aparecer ÚNICA E EXCLUSIVAMENTE na primeira página (página 1). Nenhuma outra página deve conter título, subtítulo ou cabeçalho de qualquer tipo.
 - Quando a página produzida for a página 1, ela deverá conter o título principal seguindo exatamente o mesmo estilo visual da página-modelo fornecida:
