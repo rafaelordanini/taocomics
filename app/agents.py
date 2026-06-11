@@ -62,11 +62,11 @@ class RoteiroHQ(BaseModel):
 
 def clean_json_text(text: str) -> str:
     text = text.strip()
-    
+
     # Try to find the JSON boundaries
     first_brace = text.find('{')
     first_bracket = text.find('[')
-    
+
     start_idx = -1
     end_char = ''
     if first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket):
@@ -75,12 +75,12 @@ def clean_json_text(text: str) -> str:
     elif first_bracket != -1:
         start_idx = first_bracket
         end_char = ']'
-        
+
     if start_idx != -1:
         end_idx = text.rfind(end_char)
         if end_idx != -1 and end_idx > start_idx:
             return text[start_idx:end_idx + 1].strip()
-            
+
     # Fallback to standard stripping if no braces/brackets are found
     if text.startswith("```json"):
         text = text[7:]
@@ -89,6 +89,60 @@ def clean_json_text(text: str) -> str:
     if text.endswith("```"):
         text = text[:-3]
     return text.strip()
+
+
+def parse_json_robust(text: str) -> dict:
+    """
+    Tenta fazer parse do JSON gerado por um LLM com múltiplas estratégias de reparo:
+    1. parse direto após clean_json_text
+    2. json-repair (se disponível)
+    3. reparo manual de vírgulas faltando antes de } e ]
+    4. truncamento progressivo até o último par de chaves válido
+    """
+    cleaned = clean_json_text(text)
+
+    # Tentativa 1: parse direto
+    try:
+        return parse_json_robust(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Tentativa 2: json_repair (opcional, não instalado por padrão)
+    try:
+        import json_repair  # type: ignore
+        return json_repair.loads(cleaned)
+    except Exception:
+        pass
+
+    # Tentativa 3: reparo manual — vírgulas faltando antes de } ou ]
+    import re as _re
+    repaired = _re.sub(r'(?<=["\d\]truefals])\s*\n(\s*[}\]])', r',\n\1', cleaned)
+    # Remove vírgulas antes de } ou ] (trailing commas)
+    repaired = _re.sub(r',\s*([}\]])', r'\1', repaired)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # Tentativa 4: truncar no último } válido para capturar objeto parcial
+    for end_char in ('}', ']'):
+        pos = len(cleaned)
+        while pos > 0:
+            pos = cleaned.rfind(end_char, 0, pos)
+            if pos == -1:
+                break
+            try:
+                result = json.loads(cleaned[:pos + 1])
+                return result
+            except json.JSONDecodeError:
+                pos -= 1
+
+    # Nenhuma estratégia funcionou — relança o erro original para log claro
+    raise json.JSONDecodeError(
+        f"Não foi possível reparar o JSON do LLM (tentadas 4 estratégias). "
+        f"Trecho inicial: {cleaned[:120]}",
+        cleaned, 0
+    )
 
 
 
@@ -1953,7 +2007,7 @@ def _roteirista_ponderar_roteiro_primary(client, roteiro: dict, parecer: str) ->
             content = extract_content_from_openai(response)
             clean_content = clean_json_text(content)
             print(f"[Roteirista Ponderador Fallback] Sucesso usando IA de Backup ({model}) no OpenRouter!")
-            return json.loads(clean_content)
+            return parse_json_robust(clean_content)
         except Exception as e:
             print(f"[Roteirista Ponderador Fallback] Falha com IA de Backup ({model}): {str(e)}")
             last_error = e
@@ -2005,7 +2059,7 @@ def _roteirista_ponderar_roteiro_fallback(client, roteiro: dict, parecer: str) -
     try:
         content = res["content"]
         clean_content = clean_json_text(content)
-        return json.loads(clean_content)
+        return parse_json_robust(clean_content)
     except Exception:
         return {"decisao": "PROSSEGUIR"}
 
@@ -2051,7 +2105,7 @@ def _artista_ponderar_pagina_primary(client, prompt_designer: str, parecer: str)
     )
     try:
         clean_content = clean_json_text(res["content"])
-        return json.loads(clean_content)
+        return parse_json_robust(clean_content)
     except Exception:
         return {"decisao": "PROSSEGUIR"}
 
@@ -2097,7 +2151,7 @@ def _artista_ponderar_pagina_fallback(client, prompt_designer: str, parecer: str
             content = extract_content_from_openai(response)
             clean_content = clean_json_text(content)
             print(f"[Artista Ponderador Fallback] Sucesso usando IA de Backup ({model}) no OpenRouter!")
-            return json.loads(clean_content)
+            return parse_json_robust(clean_content)
         except Exception as e:
             print(f"[Artista Ponderador Fallback] Falha com IA de Backup ({model}): {str(e)}")
             last_error = e
@@ -2883,7 +2937,7 @@ def processar_conto_taoista(
                 sse_send("[Sistema] Cache do roteiro corrompido detectado. Recuperando...")
                 raw = roteiro["content"]
                 cleaned = clean_json_text(raw)
-                roteiro = json.loads(cleaned)
+                roteiro = parse_json_robust(cleaned)
                 with open(roteiro_path, "w", encoding="utf-8") as f:
                     json.dump(roteiro, f, ensure_ascii=False, indent=2)
             # Valida se o roteiro tem páginas — cache inválido deve ser descartado
@@ -2910,7 +2964,7 @@ def processar_conto_taoista(
         raw_roteiro = raw_roteiro_res["content"]
         reasoning = raw_roteiro_res.get("reasoning")
         cleaned = clean_json_text(raw_roteiro)
-        roteiro = json.loads(cleaned)
+        roteiro = parse_json_robust(cleaned)
         
         # Salva o roteiro na pasta do conto
         with open(roteiro_path, "w", encoding="utf-8") as f:
@@ -3041,7 +3095,7 @@ def processar_conto_taoista(
                 )
                 raw_roteiro = roteiro_res["content"]
                 cleaned = clean_json_text(raw_roteiro)
-                roteiro = json.loads(cleaned)
+                roteiro = parse_json_robust(cleaned)
                 # Atualiza variáveis locais
                 titulo = roteiro.get("titulo", "Conto Taoista")
                 paginas = roteiro.get("paginas", [])
