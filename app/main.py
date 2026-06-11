@@ -389,6 +389,22 @@ async def list_comics():
         return {"error": str(e)}
 
 
+@app.delete("/api/comics/{filename}")
+async def delete_comic(filename: str):
+    """Apaga uma imagem gerada do diretório saved_comics."""
+    # Bloqueia path traversal — só aceita o nome do arquivo, sem barras
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return {"error": "Nome de arquivo inválido."}
+    filepath = os.path.join(get_saved_comics_dir(), filename)
+    if not os.path.exists(filepath):
+        return {"error": "Arquivo não encontrado."}
+    try:
+        os.remove(filepath)
+        return {"status": "success", "deleted": filename}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 class EditPageRequest(BaseModel):
     filename: str
     instruction: str

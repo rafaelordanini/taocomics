@@ -618,6 +618,15 @@ textarea {
     color: var(--accent);
     background: rgba(255,255,255,0.05);
 }
+.comic-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+.btn-delete:hover {
+    color: #ff5c5c;
+    background: rgba(255, 92, 92, 0.1);
+}
 
 /* Modal de Visualização */
 .modal {

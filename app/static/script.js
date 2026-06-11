@@ -212,9 +212,14 @@ async function refreshGallery() {
                     </div>
                     <div class="comic-info">
                         <span class="comic-title">${displayName}</span>
-                        <a href="/saved_comics/${imgName}?t=${timestamp}" download="${imgName}" class="btn-icon" title="Baixar imagem">
-                            <span class="material-icons-round">download</span>
-                        </a>
+                        <div class="comic-actions">
+                            <a href="/saved_comics/${imgName}?t=${timestamp}" download="${imgName}" class="btn-icon" title="Baixar imagem">
+                                <span class="material-icons-round">download</span>
+                            </a>
+                            <button class="btn-icon btn-delete" title="Excluir imagem" onclick="deleteComic('${imgName}', '${displayName}')">
+                                <span class="material-icons-round">delete</span>
+                            </button>
+                        </div>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -222,6 +227,25 @@ async function refreshGallery() {
         }
     } catch (err) {
         console.error("Erro ao carregar a galeria:", err);
+    }
+}
+
+// Exclui permanentemente uma imagem gerada
+async function deleteComic(imgName, displayName) {
+    if (!confirm(`Excluir "${displayName}"?\n\nEsta ação remove o arquivo permanentemente e não pode ser desfeita.`)) {
+        return;
+    }
+    try {
+        const res = await fetch(`/api/comics/${encodeURIComponent(imgName)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.error) {
+            alert("Erro ao excluir: " + data.error);
+            return;
+        }
+        await refreshGallery();
+    } catch (err) {
+        console.error("Erro ao excluir a imagem:", err);
+        alert("Erro ao excluir a imagem.");
     }
 }
 
