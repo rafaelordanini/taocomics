@@ -505,6 +505,92 @@ async function removeBatchItem(id) {
     try {
         await fetch(`/api/queue/${id}`, { method: "DELETE" });
         refreshBatchQueue();
+        refreshStatusModal();
+    } catch (err) { console.error(err); }
+}
+
+let statusModalPollTimer = null;
+
+function openStatusModal() {
+    document.getElementById("status-modal").style.display = "flex";
+    refreshStatusModal();
+    if (!statusModalPollTimer) {
+        statusModalPollTimer = setInterval(refreshStatusModal, 4000);
+    }
+}
+
+function closeStatusModal(evt) {
+    if (evt && evt.target !== document.getElementById("status-modal") && !evt.target.classList.contains("close-modal")) return;
+    if (!evt) {
+        document.getElementById("status-modal").style.display = "none";
+    } else {
+        document.getElementById("status-modal").style.display = "none";
+    }
+    clearInterval(statusModalPollTimer);
+    statusModalPollTimer = null;
+}
+
+async function refreshStatusModal() {
+    try {
+        const res = await fetch("/api/queue");
+        const data = await res.json();
+        const items = data.queue || [];
+        const list = document.getElementById("status-modal-list");
+        const summary = document.getElementById("status-modal-summary");
+
+        const counts = { aguardando: 0, processando: 0, concluido: 0, erro: 0 };
+        items.forEach(it => { if (counts[it.status] !== undefined) counts[it.status]++; });
+
+        const chipColors = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c" };
+        const chipLabels = { aguardando: "Aguardando", processando: "Processando", concluido: "Concluído", erro: "Erro" };
+        summary.innerHTML = Object.entries(counts).filter(([,v]) => v > 0).map(([k, v]) =>
+            `<span style="background:rgba(0,0,0,0.3); border:1px solid ${chipColors[k]}40; color:${chipColors[k]}; border-radius:20px; padding:0.25rem 0.75rem; font-size:0.8rem; font-weight:600;">${chipLabels[k]}: ${v}</span>`
+        ).join("") || "";
+
+        if (items.length === 0) {
+            list.innerHTML = `<div style="font-size:0.85rem; color:var(--text-secondary); text-align:center; padding:1.5rem;">Fila vazia. Suba arquivos .txt para iniciar o processamento.</div>`;
+            return;
+        }
+
+        const icons = { aguardando: "schedule", processando: "autorenew", concluido: "check_circle", erro: "error" };
+        const colorMap = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c" };
+
+        list.innerHTML = "";
+        items.forEach((it, idx) => {
+            const card = document.createElement("div");
+            card.style.cssText = `background: rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.07); border-left: 3px solid ${colorMap[it.status]}; border-radius:8px; padding:0.8rem 1rem; display:flex; align-items:center; gap:0.75rem;`;
+            const canRemove = it.status !== "processando";
+            const errMsg = it.erro ? `<div style="font-size:0.72rem; color:#e74c3c; margin-top:0.25rem;">${it.erro}</div>` : "";
+            card.innerHTML = `
+                <span class="material-icons-round ${it.status === 'processando' ? 'spinning' : ''}" style="color:${colorMap[it.status]}; font-size:1.4rem; flex-shrink:0;">${icons[it.status] || 'help'}</span>
+                <div style="flex:1; min-width:0;">
+                    <div style="font-size:0.88rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.nome}">${idx + 1}. ${it.nome}</div>
+                    <div style="font-size:0.75rem; color:${colorMap[it.status]}; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;">${it.status}</div>
+                    ${errMsg}
+                </div>
+                ${it.session_id ? `<button class="btn-icon" style="padding:0.25rem; font-size:0.7rem;" title="Acompanhar no console" onclick="followSession('${it.session_id}','${it.nome}'); closeStatusModal();"><span class="material-icons-round" style="font-size:1rem;">open_in_new</span></button>` : ""}
+                ${canRemove ? `<button class="btn-icon btn-delete" style="padding:0.25rem;" title="Remover" onclick="removeBatchItem('${it.id}')"><span class="material-icons-round" style="font-size:1rem;">close</span></button>` : ""}
+            `;
+            list.appendChild(card);
+        });
+
+        // Update header button badge
+        const activeCount = counts.aguardando + counts.processando;
+        const btn = document.getElementById("btn-status-header");
+        if (btn) btn.title = activeCount > 0 ? `Status da Fila (${activeCount} pendentes)` : "Status da Fila";
+    } catch (err) {
+        console.error("Erro ao consultar fila:", err);
+    }
+}
+
+async function clearCompletedItems() {
+    try {
+        const res = await fetch("/api/queue");
+        const data = await res.json();
+        const completed = (data.queue || []).filter(it => it.status === "concluido" || it.status === "erro");
+        await Promise.all(completed.map(it => fetch(`/api/queue/${it.id}`, { method: "DELETE" })));
+        await refreshStatusModal();
+        await refreshBatchQueue();
     } catch (err) { console.error(err); }
 }
 
