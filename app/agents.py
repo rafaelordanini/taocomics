@@ -1512,35 +1512,16 @@ def _orquestrador_montar_prompt_artista(
 
 
 def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
-    # CADEIA DE FALLBACK INFALÍVEL — ordem de preferência:
-    #   1. Codex (gratuito/ilimitado via ChatGPT Plus) — 2 tentativas com restart entre elas
-    #   2. Gratuitos: Gemini Flash Image (API direta) e Pollinations Flux (sem chave)
-    #   3. Pagos por último: Poe, OpenAI e OpenRouter
+    # CADEIA DE FALLBACK DO ARTISTA — exclusivamente gpt-image-2 em todas as vias:
+    #   1. Codex (gratuito via ChatGPT Plus) — 2 tentativas com restart do worker entre elas
+    #   2. Poe (gpt-image-2)
+    #   3. OpenAI (gpt-image-2 direto)
+    # Nenhum outro modelo de imagem é permitido para manter consistência visual.
     models_to_try = ["codex/gpt-image-2", "codex/gpt-image-2"]
-
-    # Modelo escolhido pelo usuário entra logo após o Codex (se for outro)
-    if primary_model and primary_model != "codex/gpt-image-2":
-        models_to_try.append(primary_model)
-
-    # Gratuitos
-    if g_client:
-        models_to_try.append("google/gemini-2.5-flash-image")
-    models_to_try.append("pollinations/flux")
-
-    # Pagos por último
     if poe_key:
         models_to_try.append("poe/gpt-image-2")
     if o_client:
         models_to_try.append("openai/gpt-image-2")
-    if or_client:
-        models_to_try.append("openrouter/google/gemini-2.5-flash-image")
-
-    # Remove duplicatas preservando a ordem (as 2 entradas iniciais do Codex são propositais)
-    deduped = models_to_try[:2]
-    for m in models_to_try[2:]:
-        if m not in deduped:
-            deduped.append(m)
-    models_to_try = deduped
 
     last_error = None
     for idx, model in enumerate(models_to_try):
@@ -1551,13 +1532,7 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
         else:
             sse_send(f"[Artista (Desenho)] Tentando gerar imagem com o modelo: {model} ({attempt_label})...")
         try:
-            if model in ("google/gemini-2.5-flash-image", "google/imagen-4.0-generate-001"):
-                res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            elif model.startswith("openrouter/"):
-                model_id = model.replace("openrouter/", "")
-                res = _artista_fallback(or_client, prompt, model_id=model_id)
-            else:
-                res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
+            res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
 
             res["model_used"] = model
             sse_send(f"[Artista (Desenho)] Sucesso usando o modelo: {model}!")
