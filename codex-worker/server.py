@@ -39,19 +39,13 @@ def _list_images():
 def _run_image_job(job_id: str, prompt: str):
     before = {fp for fp, _ in _list_images()}
     full_prompt = f"Generate an image: {prompt}. Image size 1024x1536."
-    # --no-project-doc evita carregar histórico/contexto anterior que causaria compactação
     cmd = [
         CODEX_BIN,
         "--dangerously-bypass-approvals-and-sandbox",
-        "--no-project-doc",
         "exec",
         full_prompt,
         "--skip-git-repo-check",
     ]
-
-    env = os.environ.copy()
-    # Garante sessão limpa sem histórico de conversa acumulado
-    env.pop("CODEX_HOME", None)
 
     try:
         result = subprocess.run(
@@ -60,7 +54,6 @@ def _run_image_job(job_id: str, prompt: str):
             capture_output=True,
             text=True,
             timeout=300,
-            env=env,
         )
     except subprocess.TimeoutExpired:
         # Mata processos Codex zumbis para não travar a próxima geração
