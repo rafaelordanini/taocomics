@@ -103,7 +103,7 @@ def parse_json_robust(text: str) -> dict:
 
     # Tentativa 1: parse direto
     try:
-        return parse_json_robust(cleaned)
+        return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
