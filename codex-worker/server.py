@@ -36,9 +36,39 @@ def _list_images():
     return imgs
 
 
-def _run_image_job(job_id: str, prompt: str):
+def _run_image_job(job_id: str, prompt: str, images_b64: list = None):
     before = {fp for fp, _ in _list_images()}
     full_prompt = f"Generate an image: {prompt}. Image size 1024x1536."
+
+    # Salva recortes de rosto de referência em disco e anexa os caminhos ao prompt
+    ref_paths = []
+    if images_b64:
+        ref_dir = os.path.expanduser("~/.codex/face_refs")
+        os.makedirs(ref_dir, exist_ok=True)
+        # Remove recortes de jobs antigos (mais de 1 hora)
+        cutoff = time.time() - 3600
+        for old in os.listdir(ref_dir):
+            old_path = os.path.join(ref_dir, old)
+            try:
+                if os.path.getmtime(old_path) < cutoff:
+                    os.remove(old_path)
+            except Exception:
+                pass
+        for idx, b64 in enumerate(images_b64[:4]):
+            try:
+                path = os.path.join(ref_dir, f"{job_id}_face_{idx}.png")
+                with open(path, "wb") as f:
+                    f.write(base64.b64decode(b64))
+                ref_paths.append(path)
+            except Exception:
+                pass
+    if ref_paths:
+        full_prompt += (
+            " IMPORTANT: first open and study these character face reference image files: "
+            + ", ".join(ref_paths)
+            + ". The characters in the generated image MUST have exactly these faces "
+            "(same facial features, hair, beard). Copy the faces faithfully."
+        )
     cmd = [
         CODEX_BIN,
         "--dangerously-bypass-approvals-and-sandbox",
@@ -106,6 +136,7 @@ def _run_image_job(job_id: str, prompt: str):
 class GenerateRequest(BaseModel):
     prompt: str
     image_b64: str = None  # imagem opcional em base64 (PNG) para análise
+    images_b64: list = None  # recortes de rosto de referência (base64 PNG)
 
 
 @app.post("/generate-image")
@@ -117,7 +148,7 @@ def generate_image(req: GenerateRequest, authorization: str = Header(default="")
     with jobs_lock:
         jobs[job_id] = {"status": "pending"}
 
-    thread = threading.Thread(target=_run_image_job, args=(job_id, req.prompt), daemon=True)
+    thread = threading.Thread(target=_run_image_job, args=(job_id, req.prompt, req.images_b64), daemon=True)
     thread.start()
 
     return {"job_id": job_id}
