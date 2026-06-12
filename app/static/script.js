@@ -1,3 +1,15 @@
+// Sessão expirada/inválida em QUALQUER chamada à API → volta para o login
+// (antes aparecia "Erro no servidor" sem explicação)
+const _origFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+    const res = await _origFetch(...args);
+    if (res.status === 401 && !String(args[0]).includes("/api/login")) {
+        window.location.href = "/login";
+        throw new Error("Sessão expirada — redirecionando para o login.");
+    }
+    return res;
+};
+
 // Banco de contos taoístas pré-carregados para facilitar testes
 const SAMPLE_TALES = {
     borboleta: `Certa vez, Zhuangzi sonhou que era uma borboleta, voando alegremente de lá para cá, de flor em flor, sem saber que era Zhuangzi. 

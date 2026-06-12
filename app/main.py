@@ -20,8 +20,31 @@ app = FastAPI(title="Taoist Comic Generator")
 # --------------------------------------------------------------------------
 AUTH_USER = os.environ.get("APP_USERNAME", "rafaelordanini")
 AUTH_PASS = os.environ.get("APP_PASSWORD", "Rafa1135m!")
-_auth_tokens: set = set()
-_auth_lock = threading.Lock()
+
+# Tokens assinados com HMAC (estáveis entre restarts do container — antes os
+# tokens ficavam em memória e toda sessão morria num --force-recreate)
+import hashlib
+import hmac as _hmac
+import time as _time
+
+_AUTH_SECRET = hashlib.sha256(f"taocomics::{AUTH_USER}::{AUTH_PASS}".encode()).digest()
+
+
+def _make_token() -> str:
+    exp = str(int(_time.time()) + 60 * 60 * 24 * 30)  # 30 dias
+    sig = _hmac.new(_AUTH_SECRET, exp.encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def _token_valido(token: str) -> bool:
+    try:
+        exp, sig = token.split(".", 1)
+        if int(exp) < _time.time():
+            return False
+        esperado = _hmac.new(_AUTH_SECRET, exp.encode(), hashlib.sha256).hexdigest()
+        return _hmac.compare_digest(sig, esperado)
+    except Exception:
+        return False
 
 # Rotas liberadas sem login (a página de login e o healthcheck)
 _PUBLIC_PATHS = {"/login", "/api/login", "/health"}
@@ -34,10 +57,7 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     token = request.cookies.get("tao_session", "")
-    with _auth_lock:
-        authorized = token in _auth_tokens
-
-    if not authorized:
+    if not _token_valido(token):
         # APIs recebem 401 JSON; navegação recebe redirect para /login
         if path.startswith("/api/") or path.startswith("/saved_comics/"):
             return JSONResponse({"error": "Não autenticado."}, status_code=401)
@@ -112,9 +132,7 @@ class LoginRequest(BaseModel):
 @app.post("/api/login")
 async def do_login(req: LoginRequest):
     if secrets.compare_digest(req.username, AUTH_USER) and secrets.compare_digest(req.password, AUTH_PASS):
-        token = secrets.token_urlsafe(32)
-        with _auth_lock:
-            _auth_tokens.add(token)
+        token = _make_token()
         resp = JSONResponse({"status": "success"})
         resp.set_cookie(
             "tao_session", token,
@@ -127,9 +145,6 @@ async def do_login(req: LoginRequest):
 
 @app.post("/api/logout")
 async def do_logout(request: Request):
-    token = request.cookies.get("tao_session", "")
-    with _auth_lock:
-        _auth_tokens.discard(token)
     resp = JSONResponse({"status": "success"})
     resp.delete_cookie("tao_session")
     return resp
