@@ -41,6 +41,26 @@ Recrie o container do app para carregar a variável:
 sudo docker-compose up -d --force-recreate app
 ```
 
+## Subir automaticamente no boot (systemd)
+
+Para o worker iniciar sozinho ao ligar a máquina:
+
+```bash
+bash antigravity-worker/install-service.sh
+```
+
+Isso instala um serviço systemd **de usuário** (roda na sua sessão, com acesso
+ao keyring onde está o login do agy) e habilita `linger` para funcionar mesmo
+sem login aberto.
+
+Comandos úteis:
+
+```bash
+systemctl --user status antigravity-worker     # status
+systemctl --user restart antigravity-worker    # reiniciar
+journalctl --user -u antigravity-worker -f     # logs ao vivo
+```
+
 ## Como funciona
 
 Na cadeia de fallback dos agentes de texto/visão, o Antigravity entra entre o
