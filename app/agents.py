@@ -775,9 +775,9 @@ def _roteirista_primary(client, conto: str, geral: str = None, especifica: str =
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -1059,9 +1059,9 @@ def _designer_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -1512,35 +1512,42 @@ def _orquestrador_montar_prompt_artista(
 
 
 def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
-    # Monta lista de modelos a tentar: primário escolhido pelo usuário + fallbacks automáticos
-    models_to_try = []
+    # CADEIA DE FALLBACK INFALÍVEL — ordem de preferência:
+    #   1. Codex (gratuito/ilimitado via ChatGPT Plus) — 2 tentativas com restart entre elas
+    #   2. Gratuitos: Gemini Flash Image (API direta) e Pollinations Flux (sem chave)
+    #   3. Pagos por último: Poe, OpenAI e OpenRouter
+    models_to_try = ["codex/gpt-image-2", "codex/gpt-image-2"]
 
-    # Modelo primário escolhido pelo usuário
-    models_to_try.append(primary_model)
+    # Modelo escolhido pelo usuário entra logo após o Codex (se for outro)
+    if primary_model and primary_model != "codex/gpt-image-2":
+        models_to_try.append(primary_model)
 
-    # Codex recebe uma segunda chance se for o modelo primário
-    if primary_model == "codex/gpt-image-2":
-        models_to_try.append("codex/gpt-image-2")
+    # Gratuitos
+    if g_client:
+        models_to_try.append("google/gemini-2.5-flash-image")
+    models_to_try.append("pollinations/flux")
 
-    # Fallbacks em cascata (somente se diferentes do primário e disponíveis)
-    fallback_chain = []
-    if poe_key and "poe/gpt-image-2" not in models_to_try:
-        fallback_chain.append("poe/gpt-image-2")
-    if o_client and "openai/gpt-image-2" not in models_to_try:
-        fallback_chain.append("openai/gpt-image-2")
-    if g_client and "google/gemini-2.5-flash-image" not in models_to_try:
-        fallback_chain.append("google/gemini-2.5-flash-image")
-    if or_client and "openrouter/google/gemini-2.5-flash-preview-05-20:free" not in models_to_try:
-        fallback_chain.append("openrouter/google/gemini-2.5-flash-preview-05-20:free")
+    # Pagos por último
+    if poe_key:
+        models_to_try.append("poe/gpt-image-2")
+    if o_client:
+        models_to_try.append("openai/gpt-image-2")
+    if or_client:
+        models_to_try.append("openrouter/google/gemini-2.5-flash-image")
 
-    models_to_try.extend(fallback_chain)
+    # Remove duplicatas preservando a ordem (as 2 entradas iniciais do Codex são propositais)
+    deduped = models_to_try[:2]
+    for m in models_to_try[2:]:
+        if m not in deduped:
+            deduped.append(m)
+    models_to_try = deduped
 
     last_error = None
     for idx, model in enumerate(models_to_try):
-        is_codex_retry = model == "codex/gpt-image-2" and idx > 0 and primary_model == "codex/gpt-image-2"
+        is_codex_retry = model == "codex/gpt-image-2" and idx > 0
         attempt_label = f"Tentativa {idx+1}/{len(models_to_try)}"
         if is_codex_retry:
-            sse_send(f"[Artista (Desenho)] Codex travou — reiniciando worker e tentando novamente... ({attempt_label})")
+            sse_send(f"[Artista (Desenho)] Codex falhou — reiniciando worker e tentando novamente... ({attempt_label})")
         else:
             sse_send(f"[Artista (Desenho)] Tentando gerar imagem com o modelo: {model} ({attempt_label})...")
         try:
@@ -1559,7 +1566,8 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
             err_str = str(e)
             sse_send(f"[Artista (Desenho)] Falha com o modelo {model}: {err_str}")
             last_error = e
-            if model == "codex/gpt-image-2" and ("timeout" in err_str.lower() or "530" in err_str):
+            if model == "codex/gpt-image-2":
+                # Reinicia o worker em qualquer falha do Codex antes da próxima tentativa
                 _restart_codex_worker()
 
     raise last_error or RuntimeError("Todos os modelos de geração de imagem falharam.")
@@ -1767,9 +1775,9 @@ def _revisor_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     if image is not None:
         backup_models = [m for m in backup_models if m != "deepseek/deepseek-chat"]
@@ -1987,9 +1995,9 @@ def _roteirista_ponderar_roteiro_primary(client, roteiro: dict, parecer: str) ->
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -2131,9 +2139,9 @@ def _artista_ponderar_pagina_fallback(client, prompt_designer: str, parecer: str
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -2273,9 +2281,9 @@ def _especialista_roteiro_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -2404,9 +2412,9 @@ def _especialista_pagina_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     if image is not None:
         backup_models = [m for m in backup_models if m != "deepseek/deepseek-chat"]
@@ -2592,9 +2600,9 @@ def _especialista_prompt_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
