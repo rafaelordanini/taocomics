@@ -146,8 +146,16 @@ def parse_json_robust(text: str) -> dict:
 
 
 
-def _run_antigravity_text(prompt: str, system: str = None, model: str = None) -> dict:
+def _pil_to_b64(image: "Image.Image") -> str:
+    """Converte uma imagem PIL em PNG base64 para envio ao worker do Antigravity."""
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _run_antigravity_text(prompt: str, system: str = None, model: str = None, image: "Image.Image" = None) -> dict:
     """Chama o worker do Antigravity (agy) rodando no host. Retorna {'content': texto}.
+    Aceita uma imagem PIL opcional para análise multimodal (Designer/Revisor/Especialista).
     Levanta exceção se o worker não estiver configurado ou falhar."""
     worker_url = os.environ.get("ANTIGRAVITY_WORKER_URL", "").rstrip("/")
     if not worker_url:
@@ -159,6 +167,8 @@ def _run_antigravity_text(prompt: str, system: str = None, model: str = None) ->
         payload["system"] = system
     if model:
         payload["model"] = model
+    if image is not None:
+        payload["image_b64"] = _pil_to_b64(image)
     resp = httpx.post(f"{worker_url}/run-text", json=payload, headers=headers, timeout=320.0)
     if resp.status_code != 200:
         raise RuntimeError(f"Antigravity worker retornou {resp.status_code}: {resp.text[:300]}")
@@ -174,9 +184,11 @@ def run_with_retry(
     fallback_fn: Callable[..., Any],
     sse_send: Callable[[str], None],
     *args,
-    antigravity_fn: Callable[..., Any] = None,
     **kwargs
 ) -> Any:
+    # Nota: o backup do Antigravity (Gemini Pro via assinatura) é tratado dentro
+    # de _executar_agente_texto_visao, então cobre todos os agentes de texto/visão
+    # automaticamente, entre o Codex e o Poe.
     try:
         sse_send(f"[{agent_name}] Tentando usar IA principal...")
         result = primary_fn(*args, **kwargs)
@@ -184,17 +196,6 @@ def run_with_retry(
         return result
     except Exception as e:
         sse_send(f"[{agent_name}] Falha na IA principal: {str(e)}")
-
-        # Backup gratuito intermediário: Antigravity (Gemini Pro via assinatura), se configurado
-        if antigravity_fn is not None and os.environ.get("ANTIGRAVITY_WORKER_URL"):
-            try:
-                sse_send(f"[{agent_name}] Ativando backup gratuito (Antigravity/Gemini Pro)...")
-                result = antigravity_fn(*args, **kwargs)
-                sse_send(f"[{agent_name}] Sucesso usando Antigravity (Gemini Pro)!")
-                return result
-            except Exception as ea:
-                sse_send(f"[{agent_name}] Antigravity falhou: {str(ea)}. Caindo para OpenRouter...")
-
         sse_send(f"[{agent_name}] Ativando IA de Backup (OpenRouter)...")
         try:
             result = fallback_fn(*args, **kwargs)
@@ -669,6 +670,29 @@ def _executar_agente_texto_visao(
             print(msg_fail)
         last_error = e
 
+    # 2.5. Antigravity (Gemini Pro via assinatura no host) — backup gratuito
+    #      multimodal. Cobre Designer/Revisor/Especialista automaticamente.
+    if os.environ.get("ANTIGRAVITY_WORKER_URL"):
+        try:
+            if sse_send:
+                sse_send(f"[{agent_name}] Usando o modelo: Antigravity (Gemini Pro)")
+            else:
+                print(f"[{agent_name}] Tentando usar Antigravity (Gemini Pro)...")
+            res = _run_antigravity_text(prompt, system=system_instruction, image=image)
+            msg_succ = f"[{agent_name}] Sucesso usando Antigravity (Gemini Pro)!"
+            if sse_send:
+                sse_send(msg_succ)
+            else:
+                print(msg_succ)
+            return res
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Antigravity falhou ou indisponível: {str(e)}"
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
+
     # 3. Tentar fallback nativo gratuito (Gemini Pro/Flash), se ainda não tentado.
     #    Se falhar, NÃO propaga: segue para o Poe (4º) e, só por último, o
     #    OpenRouter (via run_with_retry).
@@ -838,26 +862,6 @@ def _roteirista_primary(client, conto: str, geral: str = None, especifica: str =
             print(f"[Roteirista Fallback] Falha com IA de Backup ({model}): {str(e)}")
             last_error = e
     raise last_error or RuntimeError("Todos os modelos de backup do Roteirista no OpenRouter falharam.")
-
-def _roteirista_antigravity(conto: str, geral: str = None, especifica: str = None, arquivo_b64: str = None, arquivo_mime: str = None, sse_send: Callable[[str], None] = None) -> dict:
-    """Backup do Roteirista via Antigravity CLI (Gemini Pro por assinatura). Texto puro."""
-    instrucoes = ""
-    if geral:
-        instrucoes += f"\n\nINSTRUÇÕES GERAIS DO USUÁRIO:\n{geral}"
-    if especifica:
-        instrucoes += f"\n\nINSTRUÇÃO ESPECÍFICA (PRIORIDADE ABSOLUTA):\n{especifica}"
-    system = (
-        "Você é um roteirista profissional de HQs taoístas. Responda APENAS com um objeto JSON válido "
-        "(sem markdown, sem comentários) no formato: "
-        '{"titulo": "...", "total_paginas": N, "paginas": [{"pagina_numero": 1, "quadrinhos": '
-        '[{"quadrinho_numero": 1, "descricao_visual": "...", "texto": "Narrador: ... / Personagem: ..."}]}]}'
-    )
-    prompt = (
-        f"Transforme o conto taoísta abaixo em um roteiro estruturado de HQ de 1 a 10 páginas "
-        f"(6 a 12 quadrinhos por página). Responda só com o JSON.\n\nConto:\n{conto}{instrucoes}"
-    )
-    return _run_antigravity_text(prompt, system=system)
-
 
 def _roteirista_fallback(client, conto: str, geral: str = None, especifica: str = None, arquivo_b64: str = None, arquivo_mime: str = None, sse_send: Callable[[str], None] = None) -> dict:
     prompt = f"Transforme o seguinte conto antigo taoísta em um roteiro estruturado de HQ:\n\n{conto}"
@@ -2996,8 +3000,7 @@ def processar_conto_taoista(
             "Roteirista",
             lambda: _roteirista_fallback(g_client, conto, rot_geral, rot_especifica, rot_arquivo_b64, rot_arquivo_mime, sse_send=sse_send),
             lambda: _roteirista_primary(or_client, conto, rot_geral, rot_especifica, rot_arquivo_b64, rot_arquivo_mime, g_client, sse_send=sse_send),
-            sse_send,
-            antigravity_fn=lambda: _roteirista_antigravity(conto, rot_geral, rot_especifica, rot_arquivo_b64, rot_arquivo_mime, sse_send=sse_send),
+            sse_send
         )
         raw_roteiro = raw_roteiro_res["content"]
         reasoning = raw_roteiro_res.get("reasoning")

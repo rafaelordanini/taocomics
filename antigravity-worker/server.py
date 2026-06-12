@@ -1,4 +1,6 @@
 import os
+import time
+import base64
 import subprocess
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
@@ -22,6 +24,7 @@ class TextRequest(BaseModel):
     prompt: str
     system: str = None
     model: str = None
+    image_b64: str = None  # imagem opcional (PNG base64) para análise multimodal
 
 
 def _run_agy(prompt: str, model: str = None) -> str:
@@ -62,7 +65,24 @@ def run_text(req: TextRequest, authorization: str = Header(default="")):
         # agy não tem flag de system prompt dedicada no modo -p; prefixamos no prompt
         prompt = f"{req.system}\n\n---\n\n{prompt}"
 
-    text = _run_agy(prompt, model=req.model)
+    temp_img_path = None
+    if req.image_b64:
+        tmp_dir = os.path.expanduser("~/.antigravity-worker-tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        temp_img_path = os.path.join(tmp_dir, f"vision_{int(time.time()*1000)}.png")
+        with open(temp_img_path, "wb") as f:
+            f.write(base64.b64decode(req.image_b64))
+        prompt += f"\n\nAnalise a imagem localizada neste caminho de arquivo: {temp_img_path}"
+
+    try:
+        text = _run_agy(prompt, model=req.model)
+    finally:
+        if temp_img_path and os.path.exists(temp_img_path):
+            try:
+                os.remove(temp_img_path)
+            except Exception:
+                pass
+
     return {"text": text}
 
 

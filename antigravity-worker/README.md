@@ -1,8 +1,12 @@
-# Antigravity Worker (backup de texto via Gemini Pro)
+# Antigravity Worker (backup multimodal via Gemini Pro)
 
 Roda o **Antigravity CLI (`agy`)** no **host** (fora do Docker), usando sua
-assinatura Gemini Pro/Antigravity como backup gratuito para os agentes de
-texto do TaoComics — hoje ligado ao **Roteirista**.
+assinatura Gemini Pro/Antigravity como backup gratuito **multimodal** para os
+agentes de texto/visão do TaoComics: **Roteirista, Designer, Revisor e
+Especialista China**. (O Artista NÃO usa Antigravity — só gpt-image-2.)
+
+Imagens são enviadas como arquivo e o `agy` as analisa pelo caminho local,
+então os agentes que dependem de imagem de referência também funcionam.
 
 Roda no host porque o `agy` guarda o login OAuth no keyring do sistema, que
 não existe dentro de um container Docker.
@@ -39,6 +43,11 @@ sudo docker-compose up -d --force-recreate app
 
 ## Como funciona
 
-Quando a IA principal do Roteirista (Gemini API) falha, o pipeline tenta o
-Antigravity (grátis, via assinatura) **antes** de cair para o OpenRouter (pago).
+Na cadeia de fallback dos agentes de texto/visão, o Antigravity entra entre o
+Codex e o Poe (ambos antes do OpenRouter pago):
+
+```
+Gemini Flash → Codex → Antigravity (Gemini Pro) → Gemini Pro nativo → Poe → OpenRouter
+```
+
 Se `ANTIGRAVITY_WORKER_URL` não estiver definido, o passo é simplesmente pulado.
