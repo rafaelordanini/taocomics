@@ -14,6 +14,10 @@ services:
       - .env
     environment:
       - DATA_DIR=/data
+    extra_hosts:
+      # Permite que o app (container) alcance workers rodando no host,
+      # como o antigravity-worker (agy). Use ANTIGRAVITY_WORKER_URL=http://host.docker.internal:8090
+      - "host.docker.internal:host-gateway"
     depends_on:
       - worker
     healthcheck:

@@ -146,12 +146,35 @@ def parse_json_robust(text: str) -> dict:
 
 
 
+def _run_antigravity_text(prompt: str, system: str = None, model: str = None) -> dict:
+    """Chama o worker do Antigravity (agy) rodando no host. Retorna {'content': texto}.
+    Levanta exceção se o worker não estiver configurado ou falhar."""
+    worker_url = os.environ.get("ANTIGRAVITY_WORKER_URL", "").rstrip("/")
+    if not worker_url:
+        raise RuntimeError("ANTIGRAVITY_WORKER_URL não configurado.")
+    worker_token = os.environ.get("ANTIGRAVITY_WORKER_TOKEN", "") or os.environ.get("WORKER_TOKEN", "")
+    headers = {"Authorization": f"Bearer {worker_token}"} if worker_token else {}
+    payload = {"prompt": prompt}
+    if system:
+        payload["system"] = system
+    if model:
+        payload["model"] = model
+    resp = httpx.post(f"{worker_url}/run-text", json=payload, headers=headers, timeout=320.0)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Antigravity worker retornou {resp.status_code}: {resp.text[:300]}")
+    text = resp.json().get("text", "")
+    if not text:
+        raise RuntimeError("Antigravity worker retornou texto vazio.")
+    return {"content": text, "reasoning": None}
+
+
 def run_with_retry(
     agent_name: str,
     primary_fn: Callable[..., Any],
     fallback_fn: Callable[..., Any],
     sse_send: Callable[[str], None],
     *args,
+    antigravity_fn: Callable[..., Any] = None,
     **kwargs
 ) -> Any:
     try:
@@ -161,6 +184,17 @@ def run_with_retry(
         return result
     except Exception as e:
         sse_send(f"[{agent_name}] Falha na IA principal: {str(e)}")
+
+        # Backup gratuito intermediário: Antigravity (Gemini Pro via assinatura), se configurado
+        if antigravity_fn is not None and os.environ.get("ANTIGRAVITY_WORKER_URL"):
+            try:
+                sse_send(f"[{agent_name}] Ativando backup gratuito (Antigravity/Gemini Pro)...")
+                result = antigravity_fn(*args, **kwargs)
+                sse_send(f"[{agent_name}] Sucesso usando Antigravity (Gemini Pro)!")
+                return result
+            except Exception as ea:
+                sse_send(f"[{agent_name}] Antigravity falhou: {str(ea)}. Caindo para OpenRouter...")
+
         sse_send(f"[{agent_name}] Ativando IA de Backup (OpenRouter)...")
         try:
             result = fallback_fn(*args, **kwargs)
@@ -804,6 +838,26 @@ def _roteirista_primary(client, conto: str, geral: str = None, especifica: str =
             print(f"[Roteirista Fallback] Falha com IA de Backup ({model}): {str(e)}")
             last_error = e
     raise last_error or RuntimeError("Todos os modelos de backup do Roteirista no OpenRouter falharam.")
+
+def _roteirista_antigravity(conto: str, geral: str = None, especifica: str = None, arquivo_b64: str = None, arquivo_mime: str = None, sse_send: Callable[[str], None] = None) -> dict:
+    """Backup do Roteirista via Antigravity CLI (Gemini Pro por assinatura). Texto puro."""
+    instrucoes = ""
+    if geral:
+        instrucoes += f"\n\nINSTRUÇÕES GERAIS DO USUÁRIO:\n{geral}"
+    if especifica:
+        instrucoes += f"\n\nINSTRUÇÃO ESPECÍFICA (PRIORIDADE ABSOLUTA):\n{especifica}"
+    system = (
+        "Você é um roteirista profissional de HQs taoístas. Responda APENAS com um objeto JSON válido "
+        "(sem markdown, sem comentários) no formato: "
+        '{"titulo": "...", "total_paginas": N, "paginas": [{"pagina_numero": 1, "quadrinhos": '
+        '[{"quadrinho_numero": 1, "descricao_visual": "...", "texto": "Narrador: ... / Personagem: ..."}]}]}'
+    )
+    prompt = (
+        f"Transforme o conto taoísta abaixo em um roteiro estruturado de HQ de 1 a 10 páginas "
+        f"(6 a 12 quadrinhos por página). Responda só com o JSON.\n\nConto:\n{conto}{instrucoes}"
+    )
+    return _run_antigravity_text(prompt, system=system)
+
 
 def _roteirista_fallback(client, conto: str, geral: str = None, especifica: str = None, arquivo_b64: str = None, arquivo_mime: str = None, sse_send: Callable[[str], None] = None) -> dict:
     prompt = f"Transforme o seguinte conto antigo taoísta em um roteiro estruturado de HQ:\n\n{conto}"
@@ -2942,7 +2996,8 @@ def processar_conto_taoista(
             "Roteirista",
             lambda: _roteirista_fallback(g_client, conto, rot_geral, rot_especifica, rot_arquivo_b64, rot_arquivo_mime, sse_send=sse_send),
             lambda: _roteirista_primary(or_client, conto, rot_geral, rot_especifica, rot_arquivo_b64, rot_arquivo_mime, g_client, sse_send=sse_send),
-            sse_send
+            sse_send,
+            antigravity_fn=lambda: _roteirista_antigravity(conto, rot_geral, rot_especifica, rot_arquivo_b64, rot_arquivo_mime, sse_send=sse_send),
         )
         raw_roteiro = raw_roteiro_res["content"]
         reasoning = raw_roteiro_res.get("reasoning")
