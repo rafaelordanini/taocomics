@@ -628,6 +628,59 @@ textarea {
     background: rgba(255, 92, 92, 0.1);
 }
 
+/* Fila de Lote */
+.btn-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.batch-queue-panel {
+    margin-top: 0.7rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.batch-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+    background: rgba(255,255,255,0.03);
+}
+.batch-icon { font-size: 1.05rem; }
+.batch-aguardando .batch-icon { color: var(--text-secondary); }
+.batch-processando .batch-icon { color: var(--color-artista); }
+.batch-concluido .batch-icon { color: var(--color-revisor); }
+.batch-erro .batch-icon { color: var(--color-error); }
+.batch-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.batch-status {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+}
+.spinning { animation: spin 1.2s linear infinite; }
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
 /* Explorador de Arquivos */
 .browser-breadcrumb {
     font-size: 0.85rem;

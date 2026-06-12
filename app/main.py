@@ -1,11 +1,12 @@
 import os
 import queue
 import shutil
+import secrets
 import threading
 import logging
 from pydantic import BaseModel
 from fastapi import FastAPI, Request, Query
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execute_page_edit
@@ -13,6 +14,125 @@ from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execu
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Taoist Comic Generator")
+
+# --------------------------------------------------------------------------
+# Autenticação — login simples com cookie de sessão
+# --------------------------------------------------------------------------
+AUTH_USER = os.environ.get("APP_USERNAME", "rafaelordanini")
+AUTH_PASS = os.environ.get("APP_PASSWORD", "Rafa1135m!")
+_auth_tokens: set = set()
+_auth_lock = threading.Lock()
+
+# Rotas liberadas sem login (a página de login e o healthcheck)
+_PUBLIC_PATHS = {"/login", "/api/login", "/health"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    token = request.cookies.get("tao_session", "")
+    with _auth_lock:
+        authorized = token in _auth_tokens
+
+    if not authorized:
+        # APIs recebem 401 JSON; navegação recebe redirect para /login
+        if path.startswith("/api/") or path.startswith("/saved_comics/"):
+            return JSONResponse({"error": "Não autenticado."}, status_code=401)
+        return RedirectResponse(url="/login", status_code=302)
+
+    return await call_next(request)
+
+
+_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaoComics — Login</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:linear-gradient(160deg,#181525,#0f0d1a); font-family:'Segoe UI',sans-serif; }
+  .card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
+          border-radius:16px; padding:2.5rem; width:320px; text-align:center;
+          box-shadow:0 8px 40px rgba(0,0,0,0.5); }
+  h1 { color:#d4af37; font-size:1.5rem; margin:0 0 0.3rem; }
+  p  { color:#aaa; font-size:0.85rem; margin:0 0 1.5rem; }
+  input { width:100%; box-sizing:border-box; padding:0.7rem 0.9rem; margin-bottom:0.8rem;
+          background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15);
+          border-radius:8px; color:#eee; font-size:0.95rem; outline:none; }
+  input:focus { border-color:#d4af37; }
+  button { width:100%; padding:0.75rem; background:#d4af37; color:#181525; border:none;
+           border-radius:8px; font-size:1rem; font-weight:700; cursor:pointer; }
+  button:hover { filter:brightness(1.1); }
+  .err { color:#ff6b6b; font-size:0.85rem; min-height:1.2em; margin-top:0.7rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>☯ TaoComics</h1>
+    <p>Gerador de HQs Taoístas</p>
+    <form onsubmit="doLogin(event)">
+      <input type="text" id="user" placeholder="Usuário" autocomplete="username" required>
+      <input type="password" id="pass" placeholder="Senha" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+<script>
+async function doLogin(e) {
+  e.preventDefault();
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({username: document.getElementById("user").value,
+                          password: document.getElementById("pass").value})
+  });
+  const data = await res.json();
+  if (data.status === "success") { window.location.href = "/"; }
+  else { document.getElementById("err").textContent = data.error || "Falha no login."; }
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/login")
+async def login_page():
+    return HTMLResponse(_LOGIN_HTML)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/login")
+async def do_login(req: LoginRequest):
+    if secrets.compare_digest(req.username, AUTH_USER) and secrets.compare_digest(req.password, AUTH_PASS):
+        token = secrets.token_urlsafe(32)
+        with _auth_lock:
+            _auth_tokens.add(token)
+        resp = JSONResponse({"status": "success"})
+        resp.set_cookie(
+            "tao_session", token,
+            httponly=True, samesite="lax",
+            max_age=60 * 60 * 24 * 30,  # 30 dias
+        )
+        return resp
+    return JSONResponse({"error": "Usuário ou senha incorretos."}, status_code=401)
+
+
+@app.post("/api/logout")
+async def do_logout(request: Request):
+    token = request.cookies.get("tao_session", "")
+    with _auth_lock:
+        _auth_tokens.discard(token)
+    resp = JSONResponse({"status": "success"})
+    resp.delete_cookie("tao_session")
+    return resp
 
 # Configuração de CORS para permitir desenvolvimento local
 app.add_middleware(
@@ -220,17 +340,15 @@ async def get_llm_balances(req: BalanceRequest):
     }
 
 
-@app.post("/api/generate")
-async def generate_comic(request: Request):
-    body = await request.json()
-    conto = body.get("conto")
-    ref_image_b64 = body.get("ref_image")
+def _create_generation_session(conto: str, body: dict):
+    """Cria uma sessão de geração (estado + mensagens) e devolve (session_id, run_fn).
+    run_fn executa o pipeline de forma SÍNCRONA — quem chama decide a thread."""
     instrucoes = body.get("instrucoes")
-    artista_model = body.get("artista_model", "codex/gpt-image-2")
     if not isinstance(instrucoes, dict):
         instrucoes = {}
-    
-    # Captura chaves enviadas pela interface (opcional) ou usa do .env
+    artista_model = body.get("artista_model", "codex/gpt-image-2")
+    ref_image_b64 = body.get("ref_image")
+
     custom_keys = {
         "gemini_api_key": body.get("gemini_api_key"),
         "openai_api_key": body.get("openai_api_key"),
@@ -238,11 +356,7 @@ async def generate_comic(request: Request):
         "poe_api_key": body.get("poe_api_key"),
         "anthropic_api_key": body.get("anthropic_api_key") or body.get("claude_api_key"),
     }
-    
-    if not conto:
-        return {"error": "O texto do conto é obrigatório."}
-        
-    # Converte imagem base64 se presente
+
     ref_image = None
     if ref_image_b64:
         import base64
@@ -251,8 +365,7 @@ async def generate_comic(request: Request):
         try:
             image_bytes = base64.b64decode(ref_image_b64)
             ref_image = Image.open(io.BytesIO(image_bytes))
-        except Exception as e:
-            # Continua sem imagem de referência caso dê erro
+        except Exception:
             pass
 
     import uuid
@@ -261,8 +374,6 @@ async def generate_comic(request: Request):
     state.pause_event.set()
     active_sessions[session_id] = state
 
-    event_queue = queue.Queue()
-    # Lista acumulada de todas as mensagens da sessão (para polling)
     state.messages = []
     state.messages_lock = threading.Lock()
     state.done = False
@@ -271,7 +382,6 @@ async def generate_comic(request: Request):
         from datetime import datetime
         timestamp = datetime.now().strftime("%d/%m %H:%M:%S")
         stamped = f"[{timestamp}] {message}"
-        event_queue.put(stamped)
         with state.messages_lock:
             state.messages.append(stamped)
 
@@ -284,7 +394,6 @@ async def generate_comic(request: Request):
             state.pause_event.wait()
             if state.cancelled:
                 raise RuntimeError("Geração cancelada pelo usuário.")
-            # Se houver novas instruções enviadas no resume, mescla-as no dicionário local
             if hasattr(state, "updated_instructions") and state.updated_instructions:
                 sse_send("[Sistema] Mesclando novas diretivas e instruções enviadas pelo usuário...")
                 for agent, values in state.updated_instructions.items():
@@ -299,17 +408,14 @@ async def generate_comic(request: Request):
     def wait_for_user_decision(page_num: int, filename: str = None) -> tuple[str, str]:
         if state.cancelled:
             raise RuntimeError("Geração cancelada pelo usuário.")
-        
         temp_img = filename.replace(".png", "_temp.png") if filename else ""
         sse_send(f"[PAUSA] {page_num}|{temp_img}")
-        
         state.resume_event.clear()
         state.resume_event.wait()
         if state.cancelled:
             raise RuntimeError("Geração cancelada pelo usuário.")
         return state.user_decision, state.user_directive
 
-    # Executa a geração em uma thread secundária para não bloquear o servidor
     def run_pipeline():
         try:
             processar_conto_taoista(
@@ -329,16 +435,133 @@ async def generate_comic(request: Request):
             sse_send("[FIM]")
         finally:
             state.done = True
-            # Remove a sessão da memória após 5 minutos para liberar recursos
             def _cleanup():
                 import time
                 time.sleep(300)
                 active_sessions.pop(session_id, None)
             threading.Thread(target=_cleanup, daemon=True).start()
 
-    threading.Thread(target=run_pipeline, daemon=True).start()
+    return session_id, run_pipeline
 
+
+@app.post("/api/generate")
+async def generate_comic(request: Request):
+    body = await request.json()
+    conto = body.get("conto")
+    if not conto:
+        return {"error": "O texto do conto é obrigatório."}
+
+    session_id, run_pipeline = _create_generation_session(conto, body)
+    threading.Thread(target=run_pipeline, daemon=True).start()
     return {"session_id": session_id}
+
+
+# --------------------------------------------------------------------------
+# Fila de processamento em lote — vários contos (.txt), um por vez.
+# Se o conto não tiver título, o Roteirista inventa (regra já existente).
+# --------------------------------------------------------------------------
+batch_queue: list = []          # itens: {id, nome, status, session_id, erro}
+_batch_lock = threading.Lock()
+_batch_worker_running = False
+
+
+def _batch_worker():
+    """Processa a fila sequencialmente — um conto por vez."""
+    global _batch_worker_running
+    while True:
+        item = None
+        with _batch_lock:
+            for it in batch_queue:
+                if it["status"] == "aguardando":
+                    item = it
+                    break
+            if item is None:
+                _batch_worker_running = False
+                return
+            item["status"] = "processando"
+
+        try:
+            session_id, run_pipeline = _create_generation_session(item["conto"], item["config"])
+            with _batch_lock:
+                item["session_id"] = session_id
+            run_pipeline()  # SÍNCRONO — segura a fila até o conto terminar
+            state = active_sessions.get(session_id)
+            erro = None
+            if state:
+                with state.messages_lock:
+                    for m in reversed(state.messages):
+                        if "[ERRO]" in m:
+                            erro = m
+                            break
+            with _batch_lock:
+                item["status"] = "erro" if erro else "concluido"
+                item["erro"] = erro
+        except Exception as e:
+            with _batch_lock:
+                item["status"] = "erro"
+                item["erro"] = str(e)
+
+
+@app.post("/api/generate-batch")
+async def generate_batch(request: Request):
+    """Recebe vários contos e os enfileira. Formato:
+    {"contos": [{"nome": "arquivo.txt", "texto": "..."}], ...demais configs do /api/generate}"""
+    global _batch_worker_running
+    body = await request.json()
+    contos = body.get("contos") or []
+    if not contos:
+        return {"error": "Nenhum conto enviado."}
+
+    config = {k: v for k, v in body.items() if k != "contos"}
+
+    import uuid
+    added = []
+    with _batch_lock:
+        for c in contos:
+            texto = (c.get("texto") or "").strip()
+            if not texto:
+                continue
+            item = {
+                "id": str(uuid.uuid4()),
+                "nome": c.get("nome") or f"conto_{len(batch_queue) + 1}",
+                "conto": texto,
+                "config": config,
+                "status": "aguardando",
+                "session_id": None,
+                "erro": None,
+            }
+            batch_queue.append(item)
+            added.append(item["id"])
+
+        if added and not _batch_worker_running:
+            _batch_worker_running = True
+            threading.Thread(target=_batch_worker, daemon=True).start()
+
+    return {"status": "success", "enfileirados": len(added), "ids": added}
+
+
+@app.get("/api/queue")
+async def get_queue():
+    """Status da fila de processamento em lote."""
+    with _batch_lock:
+        items = [
+            {k: v for k, v in it.items() if k not in ("conto", "config")}
+            for it in batch_queue
+        ]
+    return {"queue": items}
+
+
+@app.delete("/api/queue/{item_id}")
+async def remove_queue_item(item_id: str):
+    """Remove um item da fila (só se ainda não começou ou já terminou)."""
+    with _batch_lock:
+        for it in batch_queue:
+            if it["id"] == item_id:
+                if it["status"] == "processando":
+                    return {"error": "Item em processamento — cancele pela sessão ativa."}
+                batch_queue.remove(it)
+                return {"status": "success"}
+    return {"error": "Item não encontrado."}
 
 
 @app.get("/api/session/{session_id}/messages")

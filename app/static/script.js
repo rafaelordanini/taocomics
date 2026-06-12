@@ -401,6 +401,144 @@ async function deleteBrowserEntry(path, name, isDir) {
     }
 }
 
+// ----------------------------------------------------------------------
+// Fila de processamento em lote (vários .txt, um conto por vez)
+// ----------------------------------------------------------------------
+let batchPollTimer = null;
+let batchFollowingSession = null;
+
+async function enqueueBatchFiles(files) {
+    if (!files || files.length === 0) return;
+    const contos = [];
+    for (const f of files) {
+        const texto = await f.text();
+        if (texto.trim()) contos.push({ nome: f.name, texto });
+    }
+    document.getElementById("batch-files").value = "";
+    if (contos.length === 0) { alert("Nenhum arquivo com conteúdo válido."); return; }
+
+    const payload = Object.assign({ contos }, collectGenerationConfig());
+    try {
+        const res = await fetch("/api/generate-batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.error) { alert("Erro: " + data.error); return; }
+        startBatchPolling();
+    } catch (err) {
+        console.error("Erro ao enfileirar contos:", err);
+        alert("Erro ao enviar os contos.");
+    }
+}
+
+// Reúne a mesma configuração usada na geração individual (chaves, modelo, instruções)
+function collectGenerationConfig() {
+    const cfg = { instrucoes: getCurrentInstructions() };
+    const modelSel = document.getElementById("artista-model");
+    if (modelSel) cfg.artista_model = modelSel.value;
+    const keyIds = {
+        gemini_api_key: "gemini-key", openai_api_key: "openai-key",
+        openrouter_api_key: "openrouter-key", poe_api_key: "poe-key",
+        anthropic_api_key: "anthropic-key"
+    };
+    for (const [k, id] of Object.entries(keyIds)) {
+        const el = document.getElementById(id);
+        if (el && el.value.trim()) cfg[k] = el.value.trim();
+    }
+    return cfg;
+}
+
+function startBatchPolling() {
+    document.getElementById("batch-queue-panel").style.display = "block";
+    if (batchPollTimer) return;
+    batchPollTimer = setInterval(refreshBatchQueue, 4000);
+    refreshBatchQueue();
+}
+
+async function refreshBatchQueue() {
+    try {
+        const res = await fetch("/api/queue");
+        const data = await res.json();
+        const list = document.getElementById("batch-queue-list");
+        const items = data.queue || [];
+        if (items.length === 0) {
+            list.innerHTML = `<div style="font-size:0.78rem;color:var(--text-secondary);text-align:center;padding:0.4rem;">Fila vazia.</div>`;
+            return;
+        }
+        const icons = { aguardando: "schedule", processando: "autorenew", concluido: "check_circle", erro: "error" };
+        list.innerHTML = "";
+        items.forEach(it => {
+            const row = document.createElement("div");
+            row.className = `batch-item batch-${it.status}`;
+            const canRemove = it.status !== "processando";
+            row.innerHTML = `
+                <span class="material-icons-round batch-icon ${it.status === 'processando' ? 'spinning' : ''}">${icons[it.status] || 'help'}</span>
+                <span class="batch-name" title="${it.erro || it.nome}">${it.nome}</span>
+                <span class="batch-status">${it.status}</span>
+                ${canRemove ? `<button class="btn-icon btn-delete" style="padding:0.15rem" onclick="removeBatchItem('${it.id}')"><span class="material-icons-round" style="font-size:1rem">close</span></button>` : ""}
+            `;
+            list.appendChild(row);
+        });
+
+        // Acompanha automaticamente no console o conto em processamento
+        const active = items.find(it => it.status === "processando" && it.session_id);
+        if (active && active.session_id !== batchFollowingSession) {
+            batchFollowingSession = active.session_id;
+            followSession(active.session_id, active.nome);
+        }
+
+        // Para o polling quando tudo terminou
+        if (items.every(it => it.status === "concluido" || it.status === "erro")) {
+            clearInterval(batchPollTimer);
+            batchPollTimer = null;
+            batchFollowingSession = null;
+            refreshGallery();
+        }
+    } catch (err) {
+        console.error("Erro ao consultar a fila:", err);
+    }
+}
+
+async function removeBatchItem(id) {
+    try {
+        await fetch(`/api/queue/${id}`, { method: "DELETE" });
+        refreshBatchQueue();
+    } catch (err) { console.error(err); }
+}
+
+// Acompanha no console as mensagens de uma sessão da fila (sem iniciar geração nova)
+async function followSession(sessionId, nome) {
+    window.activeSessionId = sessionId;
+    window.activePolling = true;
+    addAgentBubble("Sistema", `Acompanhando o conto da fila: ${nome || sessionId}`, "sistema");
+
+    let since = 0;
+    let finished = false;
+    while (!finished && window.activeSessionId === sessionId) {
+        await new Promise(r => setTimeout(r, 2000));
+        let pollData;
+        try {
+            const res = await fetch(`/api/session/${sessionId}/messages?since=${since}`);
+            pollData = await res.json();
+        } catch (e) { continue; }
+        const msgs = pollData.messages || [];
+        for (const msg of msgs) {
+            processAgentMessage(msg);
+            if (msg === "[FIM]" || msg.startsWith("[ERRO]")) finished = true;
+        }
+        since += msgs.length;
+        if (pollData.done) finished = true;
+    }
+    refreshGallery();
+}
+
+async function doLogout() {
+    await fetch("/api/logout", { method: "POST" });
+    window.location.href = "/login";
+}
+
 function getCurrentInstructions() {
     return {
         roteirista: {
