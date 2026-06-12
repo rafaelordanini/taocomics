@@ -1150,7 +1150,7 @@ def _designer_fallback(
 # 3. Agente Artista
 # --------------------------
 
-def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None) -> dict:
+def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None, face_paths: list = None) -> dict:
     worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
     worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
     logging.info(f"[codex-worker] CODEX_WORKER_URL={worker_url!r}")
@@ -1168,11 +1168,26 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
     if sse_send:
         sse_send("[Artista (Desenho)] Enviando job para o Codex... (geração assíncrona)")
 
+    # Recortes de rosto da biblioteca de personagens — enviados em base64 para o
+    # worker salvá-los em disco e anexá-los ao prompt do Codex
+    images_b64 = []
+    for fp in (face_paths or []):
+        try:
+            import base64 as _b64mod
+            with open(fp, "rb") as f:
+                images_b64.append(_b64mod.b64encode(f.read()).decode("utf-8"))
+        except Exception:
+            pass
+
+    payload = {"prompt": prompt}
+    if images_b64:
+        payload["images_b64"] = images_b64
+
     # Envia o job e recebe job_id imediatamente (evita timeout do Cloudflare Tunnel)
     try:
         submit_resp = httpx.post(
             f"{worker_url}/generate-image",
-            json={"prompt": prompt},
+            json=payload,
             headers=headers,
             timeout=30.0
         )
@@ -1229,9 +1244,9 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
     raise RuntimeError(f"Codex não respondeu após {MAX_WAIT}s. Worker travado — reinicie o serviço na VM com: bash ~/codex-worker/restart.sh")
 
 
-def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None, sse_send=None) -> dict:
+def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None, sse_send=None, face_paths: list = None) -> dict:
     if model_name == "codex/gpt-image-2":
-        return _generar_imagem_codex(prompt, modelos_paths=modelos_paths, sse_send=sse_send)
+        return _generar_imagem_codex(prompt, modelos_paths=modelos_paths, sse_send=sse_send, face_paths=face_paths)
     elif model_name == "poe/gpt-image-2":
         return _generar_imagem_poe(prompt, api_key=poe_key)
     elif model_name == "openai/gpt-image-2":
@@ -1569,7 +1584,7 @@ def _orquestrador_montar_prompt_artista(
     return ". ".join(parts)
 
 
-def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
+def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None, face_paths: list = None) -> dict:
     # CADEIA DE FALLBACK DO ARTISTA — exclusivamente gpt-image-2 em todas as vias:
     #   1. Codex (gratuito via ChatGPT Plus) — 2 tentativas com restart do worker entre elas
     #   2. Poe (gpt-image-2)
@@ -1590,7 +1605,7 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
         else:
             sse_send(f"[Artista (Desenho)] Tentando gerar imagem com o modelo: {model} ({attempt_label})...")
         try:
-            res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
+            res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send, face_paths=face_paths)
 
             res["model_used"] = model
             sse_send(f"[Artista (Desenho)] Sucesso usando o modelo: {model}!")
@@ -3113,9 +3128,21 @@ def processar_conto_taoista(
     titulo = roteiro.get("titulo", "Conto Taoista")
     paginas = roteiro.get("paginas", [])
     total_paginas = len(paginas)
-    
+
     sse_send(f"[Sistema] Roteiro pronto: '{titulo}' | Total de páginas: {total_paginas}")
-    
+
+    # Biblioteca global de personagens: personagens recorrentes mantêm a MESMA
+    # aparência entre contos (descritor + recorte canônico do rosto)
+    personagens_conto = {}
+    try:
+        from app.personagens import sincronizar_biblioteca
+        sse_send("[Sistema] Sincronizando personagens do conto com a biblioteca global...")
+        personagens_conto = sincronizar_biblioteca(g_client, roteiro, sse_send=sse_send)
+        if personagens_conto:
+            sse_send(f"[Sistema] {len(personagens_conto)} personagem(ns) deste conto na biblioteca: " + ", ".join(p["nome"] for p in personagens_conto.values()))
+    except Exception as e:
+        sse_send(f"[Sistema] Aviso: falha ao sincronizar biblioteca de personagens: {str(e)}")
+
     # 1.5. Análise do Conto e Roteiro pelo Especialista China (máximo 2 vezes se reprovado)
     if not roteiro_cacheado:
         tentativas_esp_roteiro = 0
@@ -3492,6 +3519,23 @@ def processar_conto_taoista(
                         "facial hair, body type and clothing as in the reference image. Do NOT redesign or "
                         "reinterpret the characters — copy their appearance faithfully."
                     )
+
+                # Biblioteca de personagens: descritores compactos + recortes de rosto
+                rostos_paths = []
+                personagens_pagina = {}
+                try:
+                    from app.personagens import personagens_na_pagina, descritores_para_prompt, rostos_de_referencia
+                    personagens_pagina = personagens_na_pagina(personagens_conto, pagina_script)
+                    descritores = descritores_para_prompt(personagens_pagina)
+                    if descritores:
+                        prompt_a_gerar += descritores
+                    rostos = rostos_de_referencia(personagens_pagina)
+                    if rostos:
+                        rostos_paths = [path for _, path in rostos]
+                        sse_send(f"[Orquestrador] Anexando rosto(s) de referência da biblioteca: {', '.join(n for n, _ in rostos)}")
+                except Exception as e:
+                    sse_send(f"[Sistema] Aviso: falha ao montar referências de personagens: {str(e)}")
+
                 sse_send(f"[Orquestrador] Prompt para o Artista ({len(prompt_a_gerar)} chars): {prompt_a_gerar[:120]}...")
 
                 # Consistência de revista: página 1 de TODO conto ancora no modelo canônico
@@ -3514,7 +3558,8 @@ def processar_conto_taoista(
                     sse_send=sse_send,
                     poe_key=poe_key,
                     modelos_paths=modelos_paths,
-                    ref_image=ref_img_artista
+                    ref_image=ref_img_artista,
+                    face_paths=rostos_paths
                 )
                 
                 if isinstance(img_data, str):
@@ -3791,6 +3836,15 @@ def processar_conto_taoista(
                     pass
             except Exception as e:
                 sse_send(f"[Sistema] Erro ao salvar imagem da página {i}: {str(e)}")
+
+        # Recorta e salva na biblioteca os rostos dos personagens desta página
+        # que ainda não têm referência canônica (primeira aparição aprovada)
+        if imagem_final and personagens_pagina:
+            try:
+                from app.personagens import salvar_rostos_da_pagina
+                salvar_rostos_da_pagina(g_client, imagem_final, personagens_pagina, sse_send=sse_send)
+            except Exception as e:
+                sse_send(f"[Sistema] Aviso: falha ao recortar rostos para a biblioteca: {str(e)}")
 
         # Após página 1 aprovada: captura referência visual e estilo para consistência
         if i == 1 and imagem_final:
