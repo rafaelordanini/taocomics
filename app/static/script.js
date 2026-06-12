@@ -415,22 +415,58 @@ async function enqueueBatchFiles(files) {
         if (texto.trim()) contos.push({ nome: f.name, texto });
     }
     document.getElementById("batch-files").value = "";
-    if (contos.length === 0) { alert("Nenhum arquivo com conteúdo válido."); return; }
+    if (contos.length === 0) { showToast("Nenhum arquivo .txt com conteúdo válido.", "erro"); return; }
 
-    const payload = Object.assign({ contos }, collectGenerationConfig());
+    showToast(`Enviando ${contos.length} conto(s) para a fila...`, "info");
+    let payload;
+    try {
+        payload = Object.assign({ contos }, collectGenerationConfig());
+    } catch (err) {
+        console.error("Erro ao montar configuração:", err);
+        showToast("Erro ao montar configuração: " + err.message, "erro");
+        return;
+    }
     try {
         const res = await fetch("/api/generate-batch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
+        if (!res.ok) {
+            const txt = await res.text();
+            showToast(`Erro ${res.status}: ${txt}`, "erro");
+            return;
+        }
         const data = await res.json();
-        if (data.error) { alert("Erro: " + data.error); return; }
+        if (data.error) { showToast("Erro: " + data.error, "erro"); return; }
+        showToast(`✓ ${data.enfileirados} conto(s) adicionado(s) à fila!`, "ok");
         startBatchPolling();
+        openStatusModal();
     } catch (err) {
         console.error("Erro ao enfileirar contos:", err);
-        alert("Erro ao enviar os contos.");
+        showToast("Erro ao enviar os contos: " + err.message, "erro");
     }
+}
+
+function showToast(msg, type = "info") {
+    let container = document.getElementById("toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "toast-container";
+        container.style.cssText = "position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;";
+        document.body.appendChild(container);
+    }
+    const colors = { ok: "#2ecc71", erro: "#e74c3c", info: "var(--accent)" };
+    const icons = { ok: "check_circle", erro: "error", info: "info" };
+    const toast = document.createElement("div");
+    toast.style.cssText = `background:rgba(18,18,28,0.95);border:1px solid ${colors[type]}55;border-left:3px solid ${colors[type]};color:#fff;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;display:flex;align-items:center;gap:0.6rem;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,0.5);opacity:0;transition:opacity 0.3s;`;
+    toast.innerHTML = `<span class="material-icons-round" style="color:${colors[type]};font-size:1.1rem;">${icons[type]}</span>${msg}`;
+    container.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = "1"; });
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 350);
+    }, 4000);
 }
 
 // Reúne a mesma configuração usada na geração individual (chaves, modelo, instruções)
@@ -451,7 +487,8 @@ function collectGenerationConfig() {
 }
 
 function startBatchPolling() {
-    document.getElementById("batch-queue-panel").style.display = "block";
+    const panel = document.getElementById("batch-queue-panel");
+    if (panel) panel.style.display = "block";
     if (batchPollTimer) return;
     batchPollTimer = setInterval(refreshBatchQueue, 4000);
     refreshBatchQueue();
