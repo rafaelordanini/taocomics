@@ -2822,7 +2822,37 @@ def processar_conto_taoista(
     """
     keys = custom_keys or {}
     inst = instrucoes or {}
-    
+
+    # ------------------------------------------------------------------
+    # Log detalhado por conto — captura TODA a conversa dos agentes
+    # (incluindo falhas de fallback) e grava incrementalmente em arquivo.
+    # Antes da pasta do conto existir, as mensagens ficam num buffer e são
+    # descarregadas assim que o diretório é criado. Como a escrita é
+    # incremental, o log sobrevive a travamentos/erros no meio do pipeline.
+    # ------------------------------------------------------------------
+    _original_sse_send = sse_send
+    _log_state = {"path": None, "lock": threading.Lock(), "buffer": []}
+
+    def _logged_sse_send(message: str):
+        from datetime import datetime
+        line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        with _log_state["lock"]:
+            if _log_state["path"]:
+                try:
+                    with open(_log_state["path"], "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
+                except Exception:
+                    pass
+            else:
+                _log_state["buffer"].append(line)
+        try:
+            if _original_sse_send:
+                _original_sse_send(message)
+        except Exception:
+            pass
+
+    sse_send = _logged_sse_send
+
     # Extração de instruções estruturadas por agente e seus anexos de arquivos
     rot_cfg = inst.get("roteirista", {})
     rot_geral = rot_cfg.get("geral") or load_instruction_file("roteirista")
@@ -2904,7 +2934,20 @@ def processar_conto_taoista(
     tale_folder_name = f"{prefix}_{h}"
     tale_dir = os.path.join(output_dir, tale_folder_name)
     os.makedirs(tale_dir, exist_ok=True)
-    
+
+    # Ativa o log em arquivo e descarrega o buffer acumulado até aqui
+    _log_state["path"] = os.path.join(tale_dir, "log_geracao.txt")
+    with _log_state["lock"]:
+        try:
+            from datetime import datetime
+            with open(_log_state["path"], "a", encoding="utf-8") as f:
+                f.write(f"\n===== INÍCIO DA GERAÇÃO — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+                for ln in _log_state["buffer"]:
+                    f.write(ln + "\n")
+            _log_state["buffer"] = []
+        except Exception:
+            pass
+
     # Subpastas dedicadas conforme novas diretrizes do usuário
     roteirista_dir = os.path.join(tale_dir, "roteirista")
     designer_dir = os.path.join(tale_dir, "designer")
@@ -3699,10 +3742,17 @@ def processar_conto_taoista(
 
         return filename if imagem_final or os.path.exists(image_path_in_tale) else None
 
+    # Rastreia quais números de página foram realmente gerados, para o resumo final
+    paginas_geradas = set()
+
     # Página 1 sempre sequencial (precisamos da referência visual/estilo antes das demais)
-    result_p1 = _processar_pagina(1, paginas[0])
-    if result_p1:
-        paginas_salvas.append(result_p1)
+    try:
+        result_p1 = _processar_pagina(1, paginas[0])
+        if result_p1:
+            paginas_salvas.append(result_p1)
+            paginas_geradas.add(1)
+    except Exception as e:
+        sse_send(f"[Sistema] ERRO ao gerar a página 1: {str(e)}")
 
     # Páginas 2+ em paralelo (até 3 simultâneas para não sobrecarregar a VM)
     if len(paginas) > 1:
@@ -3718,10 +3768,21 @@ def processar_conto_taoista(
                     result = future.result()
                     if result:
                         paginas_salvas.append(result)
+                        paginas_geradas.add(page_num)
+                    else:
+                        sse_send(f"[Sistema] ERRO: a página {page_num} NÃO foi gerada (nenhum modelo conseguiu produzir/aprovar a imagem). Veja as falhas dos agentes acima neste log.")
                 except Exception as e:
-                    sse_send(f"[Sistema] Erro na página {page_num}: {str(e)}")
+                    sse_send(f"[Sistema] ERRO na página {page_num}: {str(e)}")
 
-    sse_send(f"[Sistema] Finalizado! Todas as {total_paginas} páginas salvas no diretório com sucesso.")
+    # Resumo final explícito: quais páginas saíram e quais faltaram
+    faltando = [n for n in range(1, total_paginas + 1) if n not in paginas_geradas]
+    sse_send("[Sistema] ===== RESUMO DA GERAÇÃO =====")
+    sse_send(f"[Sistema] Páginas previstas: {total_paginas} | Geradas: {len(paginas_geradas)} | Faltando: {len(faltando)}")
+    sse_send(f"[Sistema] Páginas geradas com sucesso: {sorted(paginas_geradas) or 'nenhuma'}")
+    if faltando:
+        sse_send(f"[Sistema] ⚠ Páginas que FALHARAM: {faltando}. Procure por '[ERRO' e '[Artista' acima para o motivo de cada uma.")
+    else:
+        sse_send(f"[Sistema] Finalizado! Todas as {total_paginas} páginas salvas no diretório com sucesso.")
 
     # Gera o fluxograma visual do pipeline usado para criar o conto
     if paginas_salvas:
