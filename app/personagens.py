@@ -22,8 +22,9 @@ _lib_lock = threading.Lock()
 
 
 def _lib_dir() -> str:
-    # Resolve o diretório saved_comics sem importar agents (evita importação circular)
-    for base in ["/tmp", os.path.expanduser("~"), "."]:
+    # Resolve o diretório saved_comics sem importar agents (evita importação circular).
+    # Mesma ordem de _get_saved_comics_dir: /data (volume persistente) antes de /tmp.
+    for base in ["/data", "/tmp", os.path.expanduser("~"), "."]:
         path = os.path.join(base, "saved_comics", "personagens")
         try:
             os.makedirs(path, exist_ok=True)
