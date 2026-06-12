@@ -1673,6 +1673,48 @@ def _verificacao_focada_pagina(g_client, image: Image.Image, num_pagina: int, to
         return []
 
 
+def _verificacao_consistencia_personagens(g_client, image: Image.Image, pagina1: Image.Image, num_pagina: int) -> list:
+    """
+    Compara a página atual com a página 1 aprovada e verifica se os personagens
+    recorrentes mantêm o MESMO rosto/cabelo/vestimenta. A IA só observa; quem
+    decide é o código. Retorna lista de violações (vazia = passou).
+    """
+    try:
+        prompt = (
+            "You are comparing two pages of the SAME comic story. "
+            "IMAGE 1 is page 1 (the canonical character reference). "
+            f"IMAGE 2 is page {num_pagina}.\n\n"
+            "Answer ONLY with a strict JSON object, no prose:\n"
+            '{"personagens_consistentes": true/false, "diferencas": "short description in Portuguese"}\n\n'
+            "- personagens_consistentes: do the recurring characters in IMAGE 2 have the SAME face, "
+            "facial features, hairstyle, facial hair and clothing as the corresponding characters in IMAGE 1? "
+            "Minor pose/expression/angle changes are OK; a different-looking person is NOT.\n"
+            "- diferencas: if false, describe exactly what changed (which character, what differs: face shape, "
+            "beard, hair, clothes...). If true, use an empty string."
+        )
+        response = g_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[pagina1, image, prompt],
+        )
+        texto = (response.text or "").strip()
+        inicio = texto.find("{")
+        fim = texto.rfind("}")
+        if inicio == -1 or fim == -1:
+            return []
+        dados = json.loads(texto[inicio:fim + 1])
+        if dados.get("personagens_consistentes") is False:
+            diferencas = dados.get("diferencas") or "personagens com aparência diferente da página 1"
+            return [
+                "INCONSISTÊNCIA DE PERSONAGENS: os personagens desta página estão diferentes da página 1. "
+                f"Detalhes: {diferencas}. Redesenhe mantendo EXATAMENTE o mesmo rosto, cabelo, barba e "
+                "vestimenta dos personagens da imagem de referência (página 1)."
+            ]
+        return []
+    except Exception as e:
+        logging.warning(f"[consistencia_personagens] Falha na verificação da página {num_pagina}: {e}")
+        return []
+
+
 def _revisor_primary(
     client,
     image: Image.Image,
@@ -1742,6 +1784,13 @@ def _revisor_primary(
         f"com formatos VARIADOS (panorâmicos, verticais, lado a lado — não uma grade uniforme). "
         f"REPROVE se houver mais de 10 painéis ou se todos tiverem exatamente o mesmo formato repetido.\n"
     )
+    if num_pagina > 1:
+        prompt_text += (
+            f"8b. CONSISTÊNCIA DE PERSONAGENS — CRÍTICO: Os personagens devem manter o MESMO rosto, "
+            f"cabelo, barba e vestimenta em todas as páginas do conto. REPROVE se algum personagem "
+            f"recorrente aparentar ser uma pessoa diferente (rosto, idade ou vestimenta inconsistente "
+            f"com as páginas anteriores), descrevendo exatamente o que mudou.\n"
+        )
     if geral:
         prompt_text += f"9. Instruções Gerais:\n{geral}\n"
     if especifica:
@@ -3435,6 +3484,14 @@ def processar_conto_taoista(
                     diretiva_lider=diretiva_lider_atual,
                     estilo_fixo=estilo_pagina1 if i > 1 else None
                 )
+                # Consistência de personagens: a partir da página 2, exige rostos idênticos à referência
+                if i > 1 and pagina1_aprovada:
+                    prompt_a_gerar += (
+                        " CHARACTER CONSISTENCY (CRITICAL): the attached reference image is page 1 of this SAME story. "
+                        "Every recurring character MUST have EXACTLY the same face, facial features, hairstyle, "
+                        "facial hair, body type and clothing as in the reference image. Do NOT redesign or "
+                        "reinterpret the characters — copy their appearance faithfully."
+                    )
                 sse_send(f"[Orquestrador] Prompt para o Artista ({len(prompt_a_gerar)} chars): {prompt_a_gerar[:120]}...")
 
                 # Consistência de revista: página 1 de TODO conto ancora no modelo canônico
@@ -3512,6 +3569,20 @@ def processar_conto_taoista(
                     _salvar_imagem_rejeitada(imagem_final, tale_dir, i, f"rejeitada_focada_tentativa_{tentativa_revisao}", model_id=model_used)
                     sse_send(f"[Sistema] ✗ Página {i} REPROVADA na verificação focada: {_msg_v}")
                     continue
+
+                # GATE DE CONSISTÊNCIA DE PERSONAGENS: compara com a página 1 aprovada
+                if i > 1 and pagina1_aprovada:
+                    sse_send(f"[Sistema] Verificando consistência dos personagens da página {i} com a página 1...")
+                    _viol_pers = _verificacao_consistencia_personagens(g_client, imagem_final, pagina1_aprovada, i)
+                    if _viol_pers:
+                        revisao_aprovada = False
+                        _msg_p = " | ".join(_viol_pers)
+                        feedback_revisor = f"REPROVADO AUTOMATICAMENTE PELO SISTEMA: {_msg_p}"
+                        feedbacks_cumulativos.append(f"T{tentativa_revisao}: {_msg_p[:200]}")
+                        _salvar_imagem_rejeitada(imagem_final, tale_dir, i, f"rejeitada_personagens_tentativa_{tentativa_revisao}", model_id=model_used)
+                        sse_send(f"[Sistema] ✗ Página {i} REPROVADA por inconsistência de personagens: {_msg_p}")
+                        continue
+                    sse_send(f"[Sistema] ✓ Personagens da página {i} consistentes com a página 1.")
 
                 try:
                     filepath_temp = filepath.replace(".png", "_temp.png")
