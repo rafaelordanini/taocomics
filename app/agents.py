@@ -3731,6 +3731,15 @@ def processar_conto_taoista(
             sse_send("[Orquestrador] Página 1 aprovada — usada como referência visual para todas as páginas seguintes.")
         elif not imagem_final and not os.path.exists(image_path_in_tale):
             sse_send(f"[Sistema] ERRO: Imagem final para página {i} não disponível.")
+            # Preserva o _temp.png (se existir) renomeando-o, para evidência
+            try:
+                filepath_temp = filepath.replace(".png", "_temp.png")
+                if os.path.exists(filepath_temp):
+                    nao_aprovada = filepath.replace(".png", "_nao_aprovada.png")
+                    os.rename(filepath_temp, nao_aprovada)
+                    sse_send(f"[Sistema] Imagem gerada mas não aprovada preservada em: {os.path.basename(nao_aprovada)}")
+            except Exception:
+                pass
             
         # 5. Artista reporta término
         if i < total_paginas:
