@@ -22,6 +22,9 @@
                 <h1>TaoComics <span class="accent-text">AI</span></h1>
             </div>
             <p class="subtitle">Conversão Multiagente de Contos Taoístas em Quadrinhos Nanquim</p>
+            <button class="btn-icon" onclick="doLogout()" title="Sair" style="position:absolute; top:1rem; right:1.2rem;">
+                <span class="material-icons-round">logout</span>
+            </button>
         </header>
 
         <div class="app-layout">
@@ -168,10 +171,22 @@
                     </select>
                 </div>
 
+                <div class="panel-section">
+                    <h3><span class="material-icons-round">upload_file</span> Lote de Contos (.txt)</h3>
+                    <input type="file" id="batch-files" accept=".txt" multiple style="display:none" onchange="enqueueBatchFiles(this.files)">
+                    <button class="btn-secondary" style="width:100%" onclick="document.getElementById('batch-files').click()">
+                        <span class="material-icons-round">queue</span>
+                        <span>Subir contos para a fila</span>
+                    </button>
+                    <div id="batch-queue-panel" class="batch-queue-panel" style="display:none;">
+                        <div class="batch-queue-list" id="batch-queue-list"></div>
+                    </div>
+                </div>
+
                 <div class="panel-section fill-height">
                     <h3><span class="material-icons-round">history_edu</span> Conto Taoísta</h3>
                     <textarea id="tale-input" placeholder="Escreva ou cole aqui a história taoísta tradicional que você quer converter em quadrinhos..."></textarea>
-                    
+
                     <button id="btn-generate" onclick="startGeneration()">
                         <span class="material-icons-round">auto_awesome</span>
                         <span>Gerar Quadrinhos</span>
