@@ -146,6 +146,38 @@ def parse_json_robust(text: str) -> dict:
 
 
 
+def _pil_to_b64(image: "Image.Image") -> str:
+    """Converte uma imagem PIL em PNG base64 para envio ao worker do Antigravity."""
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _run_antigravity_text(prompt: str, system: str = None, model: str = None, image: "Image.Image" = None) -> dict:
+    """Chama o worker do Antigravity (agy) rodando no host. Retorna {'content': texto}.
+    Aceita uma imagem PIL opcional para análise multimodal (Designer/Revisor/Especialista).
+    Levanta exceção se o worker não estiver configurado ou falhar."""
+    worker_url = os.environ.get("ANTIGRAVITY_WORKER_URL", "").rstrip("/")
+    if not worker_url:
+        raise RuntimeError("ANTIGRAVITY_WORKER_URL não configurado.")
+    worker_token = os.environ.get("ANTIGRAVITY_WORKER_TOKEN", "") or os.environ.get("WORKER_TOKEN", "")
+    headers = {"Authorization": f"Bearer {worker_token}"} if worker_token else {}
+    payload = {"prompt": prompt}
+    if system:
+        payload["system"] = system
+    if model:
+        payload["model"] = model
+    if image is not None:
+        payload["image_b64"] = _pil_to_b64(image)
+    resp = httpx.post(f"{worker_url}/run-text", json=payload, headers=headers, timeout=320.0)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Antigravity worker retornou {resp.status_code}: {resp.text[:300]}")
+    text = resp.json().get("text", "")
+    if not text:
+        raise RuntimeError("Antigravity worker retornou texto vazio.")
+    return {"content": text, "reasoning": None}
+
+
 def run_with_retry(
     agent_name: str,
     primary_fn: Callable[..., Any],
@@ -154,6 +186,9 @@ def run_with_retry(
     *args,
     **kwargs
 ) -> Any:
+    # Nota: o backup do Antigravity (Gemini Pro via assinatura) é tratado dentro
+    # de _executar_agente_texto_visao, então cobre todos os agentes de texto/visão
+    # automaticamente, entre o Codex e o Poe.
     try:
         sse_send(f"[{agent_name}] Tentando usar IA principal...")
         result = primary_fn(*args, **kwargs)
@@ -634,6 +669,29 @@ def _executar_agente_texto_visao(
         else:
             print(msg_fail)
         last_error = e
+
+    # 2.5. Antigravity (Gemini Pro via assinatura no host) — backup gratuito
+    #      multimodal. Cobre Designer/Revisor/Especialista automaticamente.
+    if os.environ.get("ANTIGRAVITY_WORKER_URL"):
+        try:
+            if sse_send:
+                sse_send(f"[{agent_name}] Usando o modelo: Antigravity (Gemini Pro)")
+            else:
+                print(f"[{agent_name}] Tentando usar Antigravity (Gemini Pro)...")
+            res = _run_antigravity_text(prompt, system=system_instruction, image=image)
+            msg_succ = f"[{agent_name}] Sucesso usando Antigravity (Gemini Pro)!"
+            if sse_send:
+                sse_send(msg_succ)
+            else:
+                print(msg_succ)
+            return res
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Antigravity falhou ou indisponível: {str(e)}"
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
 
     # 3. Tentar fallback nativo gratuito (Gemini Pro/Flash), se ainda não tentado.
     #    Se falhar, NÃO propaga: segue para o Poe (4º) e, só por último, o
