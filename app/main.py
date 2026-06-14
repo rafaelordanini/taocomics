@@ -570,24 +570,21 @@ def _reconcile_locked():
 
     for nome_pasta in sorted(os.listdir(base)):
         pasta = os.path.join(base, nome_pasta)
-        roteiro_path = os.path.join(pasta, "roteiro.json")
-        if not os.path.isdir(pasta) or not os.path.exists(roteiro_path):
+        if not os.path.isdir(pasta):
             continue
         if nome_pasta in dispensados:
             continue
+        # Ignora pastas de sistema (personagens, etc.)
+        if nome_pasta in ("personagens",):
+            continue
 
-        titulo = nome_pasta
-        total = None
-        try:
-            with open(roteiro_path, "r", encoding="utf-8") as f:
-                rot = json.load(f)
-            titulo = rot.get("titulo") or rot.get("title") or nome_pasta
-            paginas = rot.get("paginas") or rot.get("pages") or []
-            total = len(paginas) if paginas else None
-        except Exception:
-            pass
+        # Localiza roteiro.json: formato novo (roteirista/) ou raiz (retrocompat)
+        roteiro_path = os.path.join(pasta, "roteirista", "roteiro.json")
+        if not os.path.exists(roteiro_path):
+            roteiro_path = os.path.join(pasta, "roteiro.json")
+        has_roteiro = os.path.exists(roteiro_path)
 
-        # Conta páginas aprovadas (formato novo e antigo)
+        # Se não há roteiro nem nenhuma imagem, ignora pasta vazia/irrelevante
         feitas = set()
         aprovadas_dir = os.path.join(pasta, "artista", "aprovadas")
         for d in (aprovadas_dir, pasta):
@@ -598,7 +595,20 @@ def _reconcile_locked():
                         if num.isdigit():
                             feitas.add(int(num))
         n_feitas = len(feitas)
+        if not has_roteiro and n_feitas == 0:
+            continue
 
+        titulo = nome_pasta
+        total = None
+        if has_roteiro:
+            try:
+                with open(roteiro_path, "r", encoding="utf-8") as f:
+                    rot = json.load(f)
+                titulo = rot.get("titulo") or rot.get("title") or nome_pasta
+                paginas = rot.get("paginas") or rot.get("pages") or []
+                total = len(paginas) if paginas else None
+            except Exception:
+                pass
         if total and n_feitas >= total:
             status = "concluido"
         else:
@@ -607,7 +617,13 @@ def _reconcile_locked():
         inicio = fim = None
         try:
             log_path = os.path.join(pasta, "log_geracao.txt")
-            ref = log_path if os.path.exists(log_path) else roteiro_path
+            if os.path.exists(log_path):
+                ref = log_path
+            elif has_roteiro:
+                ref = roteiro_path
+            else:
+                # Usa a pasta do conto como referência de tempo
+                ref = pasta
             inicio = datetime.fromtimestamp(os.path.getctime(ref)).strftime("%d/%m/%Y %H:%M")
             fim = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d/%m/%Y %H:%M")
         except Exception:
