@@ -587,11 +587,11 @@ async function refreshStatusModal() {
         const list = document.getElementById("status-modal-list");
         const summary = document.getElementById("status-modal-summary");
 
-        const counts = { aguardando: 0, processando: 0, concluido: 0, erro: 0 };
+        const counts = { aguardando: 0, processando: 0, concluido: 0, erro: 0, interrompido: 0 };
         items.forEach(it => { if (counts[it.status] !== undefined) counts[it.status]++; });
 
-        const chipColors = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c" };
-        const chipLabels = { aguardando: "Aguardando", processando: "Processando", concluido: "Concluído", erro: "Erro" };
+        const chipColors = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c", interrompido: "#888" };
+        const chipLabels = { aguardando: "Aguardando", processando: "Processando", concluido: "Concluído", erro: "Erro", interrompido: "Interrompido" };
         summary.innerHTML = Object.entries(counts).filter(([,v]) => v > 0).map(([k, v]) =>
             `<span style="background:rgba(0,0,0,0.3); border:1px solid ${chipColors[k]}40; color:${chipColors[k]}; border-radius:20px; padding:0.25rem 0.75rem; font-size:0.8rem; font-weight:600;">${chipLabels[k]}: ${v}</span>`
         ).join("") || "";
@@ -601,23 +601,27 @@ async function refreshStatusModal() {
             return;
         }
 
-        const icons = { aguardando: "schedule", processando: "autorenew", concluido: "check_circle", erro: "error" };
-        const colorMap = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c" };
+        const icons = { aguardando: "schedule", processando: "autorenew", concluido: "check_circle", erro: "error", interrompido: "warning" };
+        const colorMap = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c", interrompido: "#888" };
+        const labelMap = { aguardando: "Aguardando", processando: "Processando", concluido: "Concluído", erro: "Erro", interrompido: "Interrompido (restart)" };
 
         list.innerHTML = "";
         items.forEach((it, idx) => {
             const card = document.createElement("div");
-            card.style.cssText = `background: rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.07); border-left: 3px solid ${colorMap[it.status]}; border-radius:8px; padding:0.8rem 1rem; display:flex; align-items:center; gap:0.75rem;`;
+            card.style.cssText = `background: rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.07); border-left: 3px solid ${colorMap[it.status] || '#888'}; border-radius:8px; padding:0.8rem 1rem; display:flex; align-items:center; gap:0.75rem;`;
             const canRemove = it.status !== "processando";
-            const errMsg = it.erro ? `<div style="font-size:0.72rem; color:#e74c3c; margin-top:0.25rem;">${it.erro}</div>` : "";
+            const errMsg = it.erro ? `<div style="font-size:0.72rem; color:#e74c3c; margin-top:0.25rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.erro}">${it.erro.substring(0, 120)}</div>` : "";
+            const timestamps = [it.inicio ? `⏱ ${it.inicio}` : "", it.fim ? `→ ${it.fim}` : ""].filter(Boolean).join(" ");
+            const tsLine = timestamps ? `<div style="font-size:0.7rem; color:#777; margin-top:0.15rem;">${timestamps}</div>` : "";
             card.innerHTML = `
-                <span class="material-icons-round ${it.status === 'processando' ? 'spinning' : ''}" style="color:${colorMap[it.status]}; font-size:1.4rem; flex-shrink:0;">${icons[it.status] || 'help'}</span>
+                <span class="material-icons-round ${it.status === 'processando' ? 'spinning' : ''}" style="color:${colorMap[it.status] || '#888'}; font-size:1.4rem; flex-shrink:0;">${icons[it.status] || 'help'}</span>
                 <div style="flex:1; min-width:0;">
                     <div style="font-size:0.88rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.nome}">${idx + 1}. ${it.nome}</div>
-                    <div style="font-size:0.75rem; color:${colorMap[it.status]}; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;">${it.status}</div>
+                    <div style="font-size:0.75rem; color:${colorMap[it.status] || '#888'}; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;">${labelMap[it.status] || it.status}</div>
+                    ${tsLine}
                     ${errMsg}
                 </div>
-                ${it.session_id ? `<button class="btn-icon" style="padding:0.25rem; font-size:0.7rem;" title="Acompanhar no console" onclick="followSession('${it.session_id}','${it.nome}'); closeStatusModal();"><span class="material-icons-round" style="font-size:1rem;">open_in_new</span></button>` : ""}
+                ${it.session_id ? `<button class="btn-icon" style="padding:0.25rem;" title="Acompanhar no console" onclick="followSession('${it.session_id}','${it.nome}'); closeStatusModal();"><span class="material-icons-round" style="font-size:1rem;">open_in_new</span></button>` : ""}
                 ${canRemove ? `<button class="btn-icon btn-delete" style="padding:0.25rem;" title="Remover" onclick="removeBatchItem('${it.id}')"><span class="material-icons-round" style="font-size:1rem;">close</span></button>` : ""}
             `;
             list.appendChild(card);

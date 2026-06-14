@@ -473,16 +473,64 @@ async def generate_comic(request: Request):
 
 # --------------------------------------------------------------------------
 # Fila de processamento em lote — vários contos (.txt), um por vez.
-# Se o conto não tiver título, o Roteirista inventa (regra já existente).
+# Persistida em disco para sobreviver a restarts do container.
 # --------------------------------------------------------------------------
-batch_queue: list = []          # itens: {id, nome, status, session_id, erro}
+batch_queue: list = []          # itens: {id, nome, status, session_id, erro, inicio, fim}
 _batch_lock = threading.Lock()
 _batch_worker_running = False
+
+
+def _queue_path() -> str:
+    from app.agents import _get_saved_comics_dir
+    return os.path.join(_get_saved_comics_dir(), "fila.json")
+
+
+def _queue_save():
+    """Salva a fila em disco (chamado dentro de _batch_lock)."""
+    try:
+        # Não salva o texto do conto nem a config (grandes demais e sensíveis)
+        items = [{k: v for k, v in it.items() if k not in ("conto", "config")} for it in batch_queue]
+        with open(_queue_path(), "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning(f"[queue] Falha ao salvar fila em disco: {e}")
+
+
+def _queue_load():
+    """Carrega fila do disco no startup. Itens 'processando' voltam a 'interrompido'."""
+    global batch_queue
+    try:
+        with open(_queue_path(), "r", encoding="utf-8") as f:
+            items = json.load(f)
+        for it in items:
+            # Itens que estavam processando quando o container caiu ficam marcados
+            if it.get("status") == "processando":
+                it["status"] = "interrompido"
+                it["erro"] = "Container reiniciado durante o processamento."
+            # Garante campos obrigatórios
+            it.setdefault("session_id", None)
+            it.setdefault("erro", None)
+            it.setdefault("inicio", None)
+            it.setdefault("fim", None)
+            it.setdefault("conto", "")    # texto não foi salvo
+            it.setdefault("config", {})   # config não foi salva
+        batch_queue = items
+        logging.info(f"[queue] Fila carregada do disco: {len(items)} item(s).")
+    except FileNotFoundError:
+        batch_queue = []
+    except Exception as e:
+        logging.warning(f"[queue] Falha ao carregar fila do disco: {e}")
+        batch_queue = []
+
+
+# Carrega a fila persistida ao iniciar o servidor
+_queue_load()
 
 
 def _batch_worker():
     """Processa a fila sequencialmente — um conto por vez."""
     global _batch_worker_running
+    from datetime import datetime
     while True:
         item = None
         with _batch_lock:
@@ -492,13 +540,17 @@ def _batch_worker():
                     break
             if item is None:
                 _batch_worker_running = False
+                _queue_save()
                 return
             item["status"] = "processando"
+            item["inicio"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _queue_save()
 
         try:
             session_id, run_pipeline = _create_generation_session(item["conto"], item["config"])
             with _batch_lock:
                 item["session_id"] = session_id
+                _queue_save()
             run_pipeline()  # SÍNCRONO — segura a fila até o conto terminar
             state = active_sessions.get(session_id)
             erro = None
@@ -511,10 +563,14 @@ def _batch_worker():
             with _batch_lock:
                 item["status"] = "erro" if erro else "concluido"
                 item["erro"] = erro
+                item["fim"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                _queue_save()
         except Exception as e:
             with _batch_lock:
                 item["status"] = "erro"
                 item["erro"] = str(e)
+                item["fim"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                _queue_save()
 
 
 @app.post("/api/generate-batch")
@@ -544,10 +600,14 @@ async def generate_batch(request: Request):
                 "status": "aguardando",
                 "session_id": None,
                 "erro": None,
+                "inicio": None,
+                "fim": None,
             }
             batch_queue.append(item)
             added.append(item["id"])
 
+        if added:
+            _queue_save()
         if added and not _batch_worker_running:
             _batch_worker_running = True
             threading.Thread(target=_batch_worker, daemon=True).start()
@@ -557,7 +617,7 @@ async def generate_batch(request: Request):
 
 @app.get("/api/queue")
 async def get_queue():
-    """Status da fila de processamento em lote."""
+    """Status da fila de processamento em lote (persiste entre restarts)."""
     with _batch_lock:
         items = [
             {k: v for k, v in it.items() if k not in ("conto", "config")}
@@ -575,6 +635,7 @@ async def remove_queue_item(item_id: str):
                 if it["status"] == "processando":
                     return {"error": "Item em processamento — cancele pela sessão ativa."}
                 batch_queue.remove(it)
+                _queue_save()
                 return {"status": "success"}
     return {"error": "Item não encontrado."}
 
