@@ -354,13 +354,27 @@ def _encode_pil_to_base64(image: Image.Image) -> str:
 def _status_parecer(texto: str) -> str:
     """Extrai o status do parecer para uso no nome do arquivo: aprovado, aprovado_com_ressalvas ou reprovado."""
     upper = texto.upper()
+    
+    # Se a resposta for muito longa (> 100 caracteres), o Revisor/Especialista está 
+    # justificando uma REPROVAÇÃO e listando erros. Uma verdadeira APROVAÇÃO é direta.
+    if len(texto.strip()) > 100:
+        if "REPROVADO" in upper or "REPROVADA" in upper or "CORREÇÕES" in upper or "NÃO AUTORIZADO" in upper:
+            return "reprovado"
+        if "RESSALVAS" in upper or "AJUSTES" in upper:
+            return "aprovado_com_ressalvas"
+        # Se for um texto gigante mas não tiver a palavra reprovado, ainda assim
+        # a segurança manda reprovar para obrigar a IA a ser concisa na aprovação.
+        return "reprovado"
+
+    # Para respostas diretas (curtas):
     if "APROVADO COM RESSALVAS" in upper or "APROVADA COM RESSALVAS" in upper or "AUTORIZADO COM AJUSTES" in upper:
         return "aprovado_com_ressalvas"
     if "REPROVADO" in upper or "REPROVADA" in upper or "NÃO AUTORIZADO" in upper or "NÃO AUTORIZADA" in upper:
         return "reprovado"
     if "APROVADO" in upper or "APROVADA" in upper or "AUTORIZADO" in upper:
         return "aprovado"
-    return "sem_status"
+        
+    return "reprovado"
 
 
 def _salvar_imagem_rejeitada(imagem_ou_path, tale_dir: str, page_num: int, suffix: str, model_id: str = None):
@@ -3727,7 +3741,7 @@ def processar_conto_taoista(
                     sse_send(f"[Revisor] Parecer do Revisor: \"{resultado_revisao}\"")
                 
                 # 4.5. Especialista China valida (máximo 2 vezes em caso de reprovação)
-                revisor_ok = ("APROVADO" in resultado_revisao.upper()) or ("APROVADA" in resultado_revisao.upper())
+                revisor_ok = _status_rev in ("aprovado", "aprovado_com_ressalvas")
                 
                 if not revisor_ok:
                     revisao_aprovada = False
