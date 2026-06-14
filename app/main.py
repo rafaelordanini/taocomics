@@ -701,11 +701,30 @@ def _reconcile_locked():
             erro = f"Geração incompleta — {n_feitas}/{total} página(s) concluída(s)."
 
         existente = por_pasta.get(e.get("tale_folder")) or por_chave.get(chave) or por_nome.get(e["nome"])
+        
+        # Fuzzy match for old API jobs where the name might have a prefix like "1. "
+        if existente is None:
+            for it in batch_queue:
+                if it.get("origem") == "disco":
+                    continue
+                api_name = it.get("nome", "").lower()
+                disk_name = e["nome"].lower()
+                # Check if one contains the other, e.g. "1. aquilo que..." contains "aquilo que..."
+                if (disk_name in api_name and len(disk_name) > 5) or (api_name in disk_name and len(api_name) > 5):
+                    existente = it
+                    break
+
         if existente is not None:
             for campo, valor in [("paginas_feitas", n_feitas), ("paginas_total", total), ("tale_folder", e.get("tale_folder"))]:
                 if existente.get(campo) != valor:
                     existente[campo] = valor
                     mudou = True
+            
+            # Retroactive fix: if an API job was marked as concluido but it's not actually finished, fix it
+            if existente.get("status") == "concluido" and total and n_feitas < total:
+                existente["status"] = "interrompido"
+                existente["erro"] = f"Geração incompleta — {n_feitas}/{total} página(s) aprovada(s)."
+                mudou = True
 
             if existente.get("origem") == "disco":
                 for campo, valor in (
