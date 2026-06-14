@@ -523,8 +523,143 @@ def _queue_load():
         batch_queue = []
 
 
+def _dismissed_path() -> str:
+    from app.agents import _get_saved_comics_dir
+    return os.path.join(_get_saved_comics_dir(), "fila_dispensados.json")
+
+
+def _dismissed_load() -> set:
+    try:
+        with open(_dismissed_path(), "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
+def _dismissed_add(tale_folder: str):
+    if not tale_folder:
+        return
+    try:
+        d = _dismissed_load()
+        d.add(tale_folder)
+        with open(_dismissed_path(), "w", encoding="utf-8") as f:
+            json.dump(sorted(d), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning(f"[queue] Falha ao salvar dispensados: {e}")
+
+
+def _reconcile_locked():
+    """Sincroniza a fila com os contos já gerados em disco (chamado com _batch_lock).
+
+    Cobre contos produzidos antes da fila persistente, inclusive os que pararam
+    no meio. Cada pasta de conto com roteiro.json vira/atualiza um item 'disco:'.
+    """
+    global batch_queue
+    from datetime import datetime
+    try:
+        from app.agents import _get_saved_comics_dir
+        base = _get_saved_comics_dir()
+    except Exception:
+        return
+    if not os.path.isdir(base):
+        return
+
+    dispensados = _dismissed_load()
+    por_pasta = {it.get("tale_folder"): it for it in batch_queue if it.get("tale_folder")}
+    mudou = False
+
+    for nome_pasta in sorted(os.listdir(base)):
+        pasta = os.path.join(base, nome_pasta)
+        roteiro_path = os.path.join(pasta, "roteiro.json")
+        if not os.path.isdir(pasta) or not os.path.exists(roteiro_path):
+            continue
+        if nome_pasta in dispensados:
+            continue
+
+        titulo = nome_pasta
+        total = None
+        try:
+            with open(roteiro_path, "r", encoding="utf-8") as f:
+                rot = json.load(f)
+            titulo = rot.get("titulo") or rot.get("title") or nome_pasta
+            paginas = rot.get("paginas") or rot.get("pages") or []
+            total = len(paginas) if paginas else None
+        except Exception:
+            pass
+
+        # Conta páginas aprovadas (formato novo e antigo)
+        feitas = set()
+        aprovadas_dir = os.path.join(pasta, "artista", "aprovadas")
+        for d in (aprovadas_dir, pasta):
+            if os.path.isdir(d):
+                for f in os.listdir(d):
+                    if f.startswith("pagina_") and f.endswith(".png"):
+                        num = f[len("pagina_"):-len(".png")].split("_")[0]
+                        if num.isdigit():
+                            feitas.add(int(num))
+        n_feitas = len(feitas)
+
+        if total and n_feitas >= total:
+            status = "concluido"
+        else:
+            status = "interrompido"
+
+        inicio = fim = None
+        try:
+            log_path = os.path.join(pasta, "log_geracao.txt")
+            ref = log_path if os.path.exists(log_path) else roteiro_path
+            inicio = datetime.fromtimestamp(os.path.getctime(ref)).strftime("%d/%m/%Y %H:%M")
+            fim = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            pass
+
+        erro = None
+        if status == "interrompido":
+            falta = f"{n_feitas}/{total}" if total else f"{n_feitas}"
+            erro = f"Geração incompleta — {falta} página(s) concluída(s)."
+
+        existente = por_pasta.get(nome_pasta)
+        if existente is not None:
+            # Só atualiza itens de origem 'disco' (não mexe nos itens reais da fila)
+            if existente.get("origem") == "disco":
+                for campo, valor in (
+                    ("nome", titulo), ("status", status), ("erro", erro),
+                    ("inicio", inicio), ("fim", fim),
+                    ("paginas_feitas", n_feitas), ("paginas_total", total),
+                ):
+                    if existente.get(campo) != valor:
+                        existente[campo] = valor
+                        mudou = True
+            continue
+
+        batch_queue.append({
+            "id": f"disco:{nome_pasta}",
+            "nome": titulo,
+            "tale_folder": nome_pasta,
+            "status": status,
+            "session_id": None,
+            "erro": erro,
+            "inicio": inicio,
+            "fim": fim,
+            "paginas_feitas": n_feitas,
+            "paginas_total": total,
+            "origem": "disco",
+            "conto": "",
+            "config": {},
+        })
+        mudou = True
+
+    if mudou:
+        _queue_save()
+
+
 # Carrega a fila persistida ao iniciar o servidor
 _queue_load()
+try:
+    with _batch_lock:
+        _reconcile_locked()
+except Exception as _e:
+    logging.warning(f"[queue] Falha na reconciliação inicial: {_e}")
 
 
 def _batch_worker():
@@ -619,6 +754,10 @@ async def generate_batch(request: Request):
 async def get_queue():
     """Status da fila de processamento em lote (persiste entre restarts)."""
     with _batch_lock:
+        try:
+            _reconcile_locked()
+        except Exception as e:
+            logging.warning(f"[queue] Falha na reconciliação: {e}")
         items = [
             {k: v for k, v in it.items() if k not in ("conto", "config")}
             for it in batch_queue
@@ -634,6 +773,10 @@ async def remove_queue_item(item_id: str):
             if it["id"] == item_id:
                 if it["status"] == "processando":
                     return {"error": "Item em processamento — cancele pela sessão ativa."}
+                # Itens vindos do disco precisam ser lembrados como dispensados,
+                # senão a próxima reconciliação os re-adiciona.
+                if it.get("origem") == "disco" and it.get("tale_folder"):
+                    _dismissed_add(it["tale_folder"])
                 batch_queue.remove(it)
                 _queue_save()
                 return {"status": "success"}

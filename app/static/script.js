@@ -613,11 +613,14 @@ async function refreshStatusModal() {
             const errMsg = it.erro ? `<div style="font-size:0.72rem; color:#e74c3c; margin-top:0.25rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.erro}">${it.erro.substring(0, 120)}</div>` : "";
             const timestamps = [it.inicio ? `⏱ ${it.inicio}` : "", it.fim ? `→ ${it.fim}` : ""].filter(Boolean).join(" ");
             const tsLine = timestamps ? `<div style="font-size:0.7rem; color:#777; margin-top:0.15rem;">${timestamps}</div>` : "";
+            const progresso = (it.paginas_feitas != null && it.paginas_total)
+                ? `<span style="font-size:0.7rem; color:#999; font-weight:600; margin-left:0.4rem;">${it.paginas_feitas}/${it.paginas_total} págs</span>`
+                : (it.paginas_feitas != null ? `<span style="font-size:0.7rem; color:#999; font-weight:600; margin-left:0.4rem;">${it.paginas_feitas} págs</span>` : "");
             card.innerHTML = `
                 <span class="material-icons-round ${it.status === 'processando' ? 'spinning' : ''}" style="color:${colorMap[it.status] || '#888'}; font-size:1.4rem; flex-shrink:0;">${icons[it.status] || 'help'}</span>
                 <div style="flex:1; min-width:0;">
                     <div style="font-size:0.88rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.nome}">${idx + 1}. ${it.nome}</div>
-                    <div style="font-size:0.75rem; color:${colorMap[it.status] || '#888'}; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;">${labelMap[it.status] || it.status}</div>
+                    <div style="font-size:0.75rem; color:${colorMap[it.status] || '#888'}; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;">${labelMap[it.status] || it.status}${progresso}</div>
                     ${tsLine}
                     ${errMsg}
                 </div>
