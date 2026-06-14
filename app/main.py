@@ -625,17 +625,27 @@ def _reconcile_locked():
                         if num.isdigit():
                             sub_feitas.add(int(num))
 
+        n_feitas = len(sub_feitas)
         titulo = nome_pasta
         total = None
+
         if has_roteiro:
             try:
+                from app.agents import parse_json_robust
                 with open(roteiro_path, "r", encoding="utf-8") as f:
-                    rot = json.load(f)
-                titulo = rot.get("titulo") or rot.get("title") or nome_pasta
-                paginas = rot.get("paginas") or rot.get("pages") or []
-                total = len(paginas) if paginas else None
-            except Exception:
-                pass
+                    raw_content = f.read()
+                rot = parse_json_robust(raw_content)
+                if isinstance(rot, dict):
+                    titulo = rot.get("titulo") or rot.get("title") or nome_pasta
+                    paginas = rot.get("paginas") or rot.get("pages") or rot.get("quadrinhos") or []
+                    total = len(paginas) if paginas else rot.get("total_paginas")
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to parse roteiro for {nome_pasta}: {e}")
+
+        # Ensure total is at least n_feitas if we know n_feitas but couldn't parse total
+        if total is None and n_feitas > 0:
+            total = max(n_feitas, 1) # fallback so it doesn't stay None and break UI
 
         if not has_roteiro and not sub_feitas:
             continue
@@ -869,6 +879,34 @@ async def generate_batch(request: Request):
 
     return {"status": "success", "enfileirados": len(added), "ids": added}
 
+
+@app.get("/api/debug")
+def api_debug():
+    base = get_saved_comics_dir()
+    debug_info = {}
+    if os.path.isdir(base):
+        for f in os.listdir(base):
+            pasta = os.path.join(base, f)
+            if os.path.isdir(pasta) and f not in ("personagens",):
+                rpath = os.path.join(pasta, "roteiro.json")
+                if not os.path.exists(rpath):
+                    rpath = os.path.join(pasta, "roteirista", "roteiro.json")
+                exists = os.path.exists(rpath)
+                data = None
+                if exists:
+                    try:
+                        with open(rpath, "r", encoding="utf-8") as fp:
+                            rot = json.load(fp)
+                            pag = rot.get("paginas") or rot.get("pages") or []
+                            data = {"total_paginas": rot.get("total_paginas"), "len_paginas": len(pag)}
+                    except Exception as e:
+                        data = str(e)
+                aprovadas = os.path.join(pasta, "artista", "aprovadas")
+                feitas = 0
+                if os.path.exists(aprovadas):
+                    feitas = len([x for x in os.listdir(aprovadas) if x.endswith(".png")])
+                debug_info[f] = {"has_roteiro": exists, "roteiro_data": data, "feitas": feitas}
+    return {"debug": debug_info, "queue": batch_queue}
 
 @app.get("/api/queue")
 async def get_queue():
