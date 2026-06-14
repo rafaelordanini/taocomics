@@ -106,6 +106,7 @@ body {
     font-size: 0.9rem;
     color: var(--text-secondary);
     font-weight: 400;
+    padding-right: 50px; /* Margem de segurança para ícones de extensões do navegador (ex: Google Tradutor) */
 }
 
 /* Layout Modular (3 colunas) */
