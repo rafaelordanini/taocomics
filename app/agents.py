@@ -2909,7 +2909,8 @@ def processar_conto_taoista(
     instrucoes: dict = None,
     wait_for_user_decision: Callable[[int, str], str] = None,
     check_status: Callable[[], None] = None,
-    artista_model: str = "codex/gpt-image-2"
+    artista_model: str = "codex/gpt-image-2",
+    on_folder_created: Callable[[str], None] = None
 ) -> List[str]:
     """
     Orquestra todo o pipeline de geração usando os agentes de IA.
@@ -3029,6 +3030,8 @@ def processar_conto_taoista(
     tale_folder_name = f"{prefix}_{h}"
     tale_dir = os.path.join(output_dir, tale_folder_name)
     os.makedirs(tale_dir, exist_ok=True)
+    if on_folder_created:
+        on_folder_created(tale_folder_name)
 
     # Ativa o log em arquivo e descarrega o buffer acumulado até aqui
     _log_state["path"] = os.path.join(tale_dir, "log_geracao.txt")
