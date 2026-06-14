@@ -1510,7 +1510,9 @@ def _montar_prompt_artista_dsl(
     dsl: dict,
     feedback_revisor: str = None,
     feedback_especialista: str = None,
-    diretiva_lider: str = None
+    diretiva_lider: str = None,
+    num_pagina: int = None,
+    titulo: str = None
 ) -> str:
     """
     Monta o prompt final para o Artista a partir do JSON DSL do Designer.
@@ -1529,13 +1531,33 @@ def _montar_prompt_artista_dsl(
 
     # JSON compacto (sem espaços supérfluos) como linguagem de comunicação com o Artista
     spec = json.dumps(dsl, ensure_ascii=False, separators=(",", ":"))
+
+    titulo_aviso = ""
+    pnum = num_pagina or dsl.get("page") or dsl.get("pagina") or dsl.get("num_pagina") or dsl.get("pagina_numero")
+    titulo_str = titulo or dsl.get("titulo") or dsl.get("title") or ""
+    if pnum == 1:
+        if titulo_str:
+            titulo_aviso = (
+                f"PAGE 1 COVER RULE (CRITICAL): this is the FIRST PAGE. You MUST display the story title "
+                f"'{titulo_str}' prominently at the top of the page as a large decorative header. "
+                "The title MUST be clearly legible. This is mandatory — no title = automatic rejection. "
+            )
+        else:
+            titulo_aviso = (
+                "PAGE 1 COVER RULE (CRITICAL): this is the FIRST PAGE. You MUST display the story title "
+                "prominently at the top of the page as a large decorative header. "
+                "This is mandatory — no title = automatic rejection. "
+            )
+
     instrucao = (
         "Render this comic page from the structured JSON spec below. "
         "Draw every panel in 'panels' in order, using the shared 'style'. "
         "IMPORTANT: the panel order/indices are READING ORDER ONLY — NEVER draw numbers, "
         "digits or order labels on the panels. No panel may display a visible number. "
         "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
-        "Apply all items in 'fixes' as corrections. JSON spec:\n"
+        "Apply all items in 'fixes' as corrections. "
+        + titulo_aviso
+        + "JSON spec:\n"
     )
     return instrucao + spec
 
@@ -1546,7 +1568,9 @@ def _orquestrador_montar_prompt_artista(
     feedback_revisor: str = None,
     feedback_especialista: str = None,
     diretiva_lider: str = None,
-    estilo_fixo: str = None
+    estilo_fixo: str = None,
+    num_pagina: int = None,
+    titulo: str = None
 ) -> str:
     """
     Orquestrador centraliza toda informação destinada ao Artista.
@@ -1561,7 +1585,7 @@ def _orquestrador_montar_prompt_artista(
             dsl["style"] = estilo_fixo
         elif estilo_fixo:
             dsl["style"] = estilo_fixo  # sobrescreve para garantir consistência
-        return _montar_prompt_artista_dsl(g_client, dsl, feedback_revisor, feedback_especialista, diretiva_lider)
+        return _montar_prompt_artista_dsl(g_client, dsl, feedback_revisor, feedback_especialista, diretiva_lider, num_pagina=num_pagina, titulo=titulo)
 
     # Legado: prompt em texto livre (compatibilidade com prompts antigos cacheados)
     base = _comprimir_prompt_designer(g_client, prompt_designer)
@@ -1671,6 +1695,11 @@ def _verificacao_focada_pagina(g_client, image: Image.Image, num_pagina: int, to
             violacoes.append(
                 "PAINÉIS NUMERADOS: há números de ordem visíveis nos quadrinhos. "
                 "Redesenhe SEM nenhum número, dígito ou etiqueta de ordem nos painéis."
+            )
+        if num_pagina == 1 and not dados.get("titulo_presente"):
+            violacoes.append(
+                "TÍTULO AUSENTE: esta é a página 1 (capa) e NÃO há título visível. "
+                "A página 1 DEVE exibir o título do conto em destaque no topo. Redesenhe incluindo o título."
             )
         if num_pagina != 1 and dados.get("titulo_presente"):
             violacoes.append(
@@ -3509,7 +3538,9 @@ def processar_conto_taoista(
                     feedback_revisor=feedback_final_revisor,
                     feedback_especialista=feedback_especialista,
                     diretiva_lider=diretiva_lider_atual,
-                    estilo_fixo=estilo_pagina1 if i > 1 else None
+                    estilo_fixo=estilo_pagina1 if i > 1 else None,
+                    num_pagina=i,
+                    titulo=titulo
                 )
                 # Consistência de personagens: a partir da página 2, exige rostos idênticos à referência
                 if i > 1 and pagina1_aprovada:
