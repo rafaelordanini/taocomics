@@ -355,7 +355,7 @@ async def get_llm_balances(req: BalanceRequest):
     }
 
 
-def _create_generation_session(conto: str, body: dict):
+def _create_generation_session(conto: str, body: dict, on_folder_created=None):
     """Cria uma sessão de geração (estado + mensagens) e devolve (session_id, run_fn).
     run_fn executa o pipeline de forma SÍNCRONA — quem chama decide a thread."""
     instrucoes = body.get("instrucoes")
@@ -442,7 +442,8 @@ def _create_generation_session(conto: str, body: dict):
                 instrucoes=instrucoes,
                 wait_for_user_decision=wait_for_user_decision,
                 check_status=check_status,
-                artista_model=artista_model
+                artista_model=artista_model,
+                on_folder_created=on_folder_created
             )
             sse_send("[FIM]")
         except Exception as e:
@@ -767,7 +768,12 @@ def _batch_worker():
             _queue_save()
 
         try:
-            session_id, run_pipeline = _create_generation_session(item["conto"], item["config"])
+            def set_folder(folder_name: str):
+                with _batch_lock:
+                    item["tale_folder"] = folder_name
+                    _queue_save()
+            
+            session_id, run_pipeline = _create_generation_session(item["conto"], item["config"], on_folder_created=set_folder)
             with _batch_lock:
                 item["session_id"] = session_id
                 _queue_save()
