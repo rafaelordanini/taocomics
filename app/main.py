@@ -555,6 +555,7 @@ def _reconcile_locked():
     no meio. Cada pasta de conto com roteiro.json vira/atualiza um item 'disco:'.
     """
     global batch_queue
+    import re
     from datetime import datetime
     try:
         from app.agents import _get_saved_comics_dir
@@ -564,39 +565,64 @@ def _reconcile_locked():
     if not os.path.isdir(base):
         return
 
+    def _safe_title(t):
+        return "".join([c if c.isalnum() else "_" for c in (t or "")]).strip("_")
+
     dispensados = _dismissed_load()
-    por_pasta = {it.get("tale_folder"): it for it in batch_queue if it.get("tale_folder")}
-    mudou = False
+    # entradas reconstruídas, indexadas por uma chave estável
+    entradas = {}  # chave -> dict
 
-    for nome_pasta in sorted(os.listdir(base)):
+    try:
+        nomes = os.listdir(base)
+    except Exception:
+        return
+
+    # --- Passo A: páginas finais soltas na raiz (espelha a galeria) ---
+    # Arquivos no formato "{safe_title}_pagina_{N}.png"
+    pag_re = re.compile(r"^(.*)_pagina_(\d+)\.png$", re.IGNORECASE)
+    for f in nomes:
+        if not f.lower().endswith(".png"):
+            continue
+        if f.endswith("_temp.png") or f.endswith("_nao_aprovada.png"):
+            continue
+        fp = os.path.join(base, f)
+        if not os.path.isfile(fp):
+            continue
+        m = pag_re.match(f)
+        if not m:
+            continue
+        chave = m.group(1)
+        num = int(m.group(2))
+        e = entradas.setdefault(chave, {
+            "nome": chave.replace("_", " ").strip(),
+            "feitas": set(), "total": None, "tale_folder": None,
+            "mtimes": [],
+        })
+        e["feitas"].add(num)
+        try:
+            e["mtimes"].append(os.path.getmtime(fp))
+        except Exception:
+            pass
+
+    # --- Passo B: subpastas de conto (enriquecem título e total via roteiro) ---
+    for nome_pasta in sorted(nomes):
         pasta = os.path.join(base, nome_pasta)
-        if not os.path.isdir(pasta):
-            continue
-        if nome_pasta in dispensados:
-            continue
-        # Ignora pastas de sistema (personagens, etc.)
-        if nome_pasta in ("personagens",):
+        if not os.path.isdir(pasta) or nome_pasta in ("personagens",):
             continue
 
-        # Localiza roteiro.json: formato novo (roteirista/) ou raiz (retrocompat)
         roteiro_path = os.path.join(pasta, "roteirista", "roteiro.json")
         if not os.path.exists(roteiro_path):
             roteiro_path = os.path.join(pasta, "roteiro.json")
         has_roteiro = os.path.exists(roteiro_path)
 
-        # Se não há roteiro nem nenhuma imagem, ignora pasta vazia/irrelevante
-        feitas = set()
-        aprovadas_dir = os.path.join(pasta, "artista", "aprovadas")
-        for d in (aprovadas_dir, pasta):
+        sub_feitas = set()
+        for d in (os.path.join(pasta, "artista", "aprovadas"), pasta):
             if os.path.isdir(d):
                 for f in os.listdir(d):
                     if f.startswith("pagina_") and f.endswith(".png"):
                         num = f[len("pagina_"):-len(".png")].split("_")[0]
                         if num.isdigit():
-                            feitas.add(int(num))
-        n_feitas = len(feitas)
-        if not has_roteiro and n_feitas == 0:
-            continue
+                            sub_feitas.add(int(num))
 
         titulo = nome_pasta
         total = None
@@ -609,39 +635,77 @@ def _reconcile_locked():
                 total = len(paginas) if paginas else None
             except Exception:
                 pass
+
+        if not has_roteiro and not sub_feitas:
+            continue
+
+        # Casa esta pasta com uma entrada do passo A pelo safe_title do título
+        chave = _safe_title(titulo)
+        e = entradas.get(chave)
+        if e is None:
+            # tenta casar pelo próprio nome da pasta
+            e = entradas.get(nome_pasta)
+        if e is None:
+            e = entradas.setdefault(chave or nome_pasta, {
+                "nome": titulo, "feitas": set(), "total": None,
+                "tale_folder": None, "mtimes": [],
+            })
+        e["nome"] = titulo
+        e["total"] = total
+        e["tale_folder"] = nome_pasta
+        e["feitas"] |= sub_feitas
+        try:
+            log_path = os.path.join(pasta, "log_geracao.txt")
+            ref = log_path if os.path.exists(log_path) else (roteiro_path if has_roteiro else pasta)
+            e["ctime"] = os.path.getctime(ref)
+            e["mtimes"].append(os.path.getmtime(ref))
+        except Exception:
+            pass
+
+    # --- Monta/atualiza os itens da fila ---
+    por_pasta = {it.get("tale_folder"): it for it in batch_queue if it.get("tale_folder")}
+    por_chave = {it.get("disco_key"): it for it in batch_queue if it.get("disco_key")}
+    mudou = False
+
+    for chave, e in entradas.items():
+        ident = e.get("tale_folder") or chave
+        if ident in dispensados or chave in dispensados:
+            continue
+
+        n_feitas = len(e["feitas"])
+        total = e.get("total")
         if total and n_feitas >= total:
             status = "concluido"
-        else:
+        elif total:
             status = "interrompido"
+        else:
+            # Sem roteiro: as páginas na raiz são finais aprovadas → consideramos pronto
+            status = "concluido"
 
         inicio = fim = None
         try:
-            log_path = os.path.join(pasta, "log_geracao.txt")
-            if os.path.exists(log_path):
-                ref = log_path
-            elif has_roteiro:
-                ref = roteiro_path
-            else:
-                # Usa a pasta do conto como referência de tempo
-                ref = pasta
-            inicio = datetime.fromtimestamp(os.path.getctime(ref)).strftime("%d/%m/%Y %H:%M")
-            fim = datetime.fromtimestamp(os.path.getmtime(ref)).strftime("%d/%m/%Y %H:%M")
+            ct = e.get("ctime")
+            if ct is None and e["mtimes"]:
+                ct = min(e["mtimes"])
+            if ct is not None:
+                inicio = datetime.fromtimestamp(ct).strftime("%d/%m/%Y %H:%M")
+            if e["mtimes"]:
+                fim = datetime.fromtimestamp(max(e["mtimes"])).strftime("%d/%m/%Y %H:%M")
         except Exception:
             pass
 
         erro = None
         if status == "interrompido":
-            falta = f"{n_feitas}/{total}" if total else f"{n_feitas}"
-            erro = f"Geração incompleta — {falta} página(s) concluída(s)."
+            erro = f"Geração incompleta — {n_feitas}/{total} página(s) concluída(s)."
 
-        existente = por_pasta.get(nome_pasta)
+        existente = por_pasta.get(e.get("tale_folder")) or por_chave.get(chave)
         if existente is not None:
-            # Só atualiza itens de origem 'disco' (não mexe nos itens reais da fila)
             if existente.get("origem") == "disco":
                 for campo, valor in (
-                    ("nome", titulo), ("status", status), ("erro", erro),
+                    ("nome", e["nome"]), ("status", status), ("erro", erro),
                     ("inicio", inicio), ("fim", fim),
                     ("paginas_feitas", n_feitas), ("paginas_total", total),
+                    ("tale_folder", e.get("tale_folder")),
                 ):
                     if existente.get(campo) != valor:
                         existente[campo] = valor
@@ -649,9 +713,10 @@ def _reconcile_locked():
             continue
 
         batch_queue.append({
-            "id": f"disco:{nome_pasta}",
-            "nome": titulo,
-            "tale_folder": nome_pasta,
+            "id": f"disco:{ident}",
+            "disco_key": chave,
+            "nome": e["nome"],
+            "tale_folder": e.get("tale_folder"),
             "status": status,
             "session_id": None,
             "erro": erro,
@@ -791,8 +856,10 @@ async def remove_queue_item(item_id: str):
                     return {"error": "Item em processamento — cancele pela sessão ativa."}
                 # Itens vindos do disco precisam ser lembrados como dispensados,
                 # senão a próxima reconciliação os re-adiciona.
-                if it.get("origem") == "disco" and it.get("tale_folder"):
-                    _dismissed_add(it["tale_folder"])
+                if it.get("origem") == "disco":
+                    _dismissed_add(it.get("tale_folder") or it.get("disco_key"))
+                    if it.get("disco_key"):
+                        _dismissed_add(it["disco_key"])
                 batch_queue.remove(it)
                 _queue_save()
                 return {"status": "success"}
