@@ -1554,6 +1554,7 @@ def _montar_prompt_artista_dsl(
         "Draw every panel in 'panels' in order, using the shared 'style'. "
         "IMPORTANT: the panel order/indices are READING ORDER ONLY — NEVER draw numbers, "
         "digits or order labels on the panels. No panel may display a visible number. "
+        "CRITICAL: Maintain absolute consistency in character faces, hairstyles, and CLOTHING/OUTFITS throughout all panels. "
         "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
         "Apply all items in 'fixes' as corrections. "
         + titulo_aviso
@@ -1730,9 +1731,9 @@ def _verificacao_consistencia_personagens(g_client, image: Image.Image, pagina1:
             f"IMAGE 2 is page {num_pagina}.\n\n"
             "Answer ONLY with a strict JSON object, no prose:\n"
             '{"personagens_consistentes": true/false, "diferencas": "short description in Portuguese"}\n\n'
-            "- personagens_consistentes: do the recurring characters in IMAGE 2 have the SAME face, "
-            "facial features, hairstyle, facial hair and clothing as the corresponding characters in IMAGE 1? "
-            "Minor pose/expression/angle changes are OK; a different-looking person is NOT.\n"
+            "- personagens_consistentes: do the recurring characters in IMAGE 2 have the EXACT SAME face, "
+            "facial features, hairstyle, facial hair AND EXACT SAME CLOTHING/OUTFIT as the corresponding characters in IMAGE 1? "
+            "Different clothing or a different-looking person is an IMMEDIATE REJECTION (false).\n"
             "- diferencas: if false, describe exactly what changed (which character, what differs: face shape, "
             "beard, hair, clothes...). If true, use an empty string."
         )
@@ -1779,6 +1780,7 @@ def _revisor_primary(
         f"Verificações OBRIGATÓRIAS:\n"
         f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos, névoa e montanhas taoístas.\n"
         f"2. Caixas de texto/balões: Aprove se existirem e estiverem bem dispostos, mesmo com texto ilegível.\n"
+        f"5. CONSISTÊNCIA DE ROUPAS E ROSTOS: Personagens recorrentes DEVEM manter EXATAMENTE os mesmos rostos e as MESMAS ROUPAS/VESTIMENTAS da página 1. Se houver troca injustificada de roupa ou rosto diferente, REPROVE IMEDIATAMENTE.\n"
     )
     if num_pagina == 1:
         if titulo:

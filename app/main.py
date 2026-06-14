@@ -665,6 +665,7 @@ def _reconcile_locked():
     # --- Monta/atualiza os itens da fila ---
     por_pasta = {it.get("tale_folder"): it for it in batch_queue if it.get("tale_folder")}
     por_chave = {it.get("disco_key"): it for it in batch_queue if it.get("disco_key")}
+    por_nome = {it.get("nome"): it for it in batch_queue if it.get("nome")}
     mudou = False
 
     for chave, e in entradas.items():
@@ -698,14 +699,17 @@ def _reconcile_locked():
         if status == "interrompido":
             erro = f"Geração incompleta — {n_feitas}/{total} página(s) concluída(s)."
 
-        existente = por_pasta.get(e.get("tale_folder")) or por_chave.get(chave)
+        existente = por_pasta.get(e.get("tale_folder")) or por_chave.get(chave) or por_nome.get(e["nome"])
         if existente is not None:
+            for campo, valor in [("paginas_feitas", n_feitas), ("paginas_total", total), ("tale_folder", e.get("tale_folder"))]:
+                if existente.get(campo) != valor:
+                    existente[campo] = valor
+                    mudou = True
+
             if existente.get("origem") == "disco":
                 for campo, valor in (
                     ("nome", e["nome"]), ("status", status), ("erro", erro),
                     ("inicio", inicio), ("fim", fim),
-                    ("paginas_feitas", n_feitas), ("paginas_total", total),
-                    ("tale_folder", e.get("tale_folder")),
                 ):
                     if existente.get(campo) != valor:
                         existente[campo] = valor
@@ -777,8 +781,18 @@ def _batch_worker():
                             erro = m
                             break
             with _batch_lock:
-                item["status"] = "erro" if erro else "concluido"
-                item["erro"] = erro
+                _reconcile_locked()
+                pf = item.get("paginas_feitas", 0)
+                pt = item.get("paginas_total")
+                if erro:
+                    item["status"] = "erro"
+                    item["erro"] = erro
+                elif pt and pf < pt:
+                    item["status"] = "interrompido"
+                    item["erro"] = f"Geração incompleta — {pf}/{pt} página(s) aprovada(s)."
+                else:
+                    item["status"] = "concluido"
+                    item["erro"] = None
                 item["fim"] = datetime.now().strftime("%d/%m/%Y %H:%M")
                 _queue_save()
         except Exception as e:
