@@ -945,7 +945,9 @@ DESIGNER_JSON_SCHEMA = (
     "}\n"
     "Regras: inclua TODOS os quadrinhos do roteiro (6 a 10 painéis). Seja detalhista em 'scene' e "
     "'characters', mas evite repetir descritores de estilo em cada painel (eles ficam em 'style'). "
-    "Preserve os textos de balões/narração fielmente do roteiro."
+    "Preserve os textos de balões/narração fielmente do roteiro. "
+    "MUITO IMPORTANTE: NÃO inclua JAMAIS o nome ou identificação do personagem (ex: 'Intendente:', 'Laozi:', 'Yu Hsing:') no texto do balão ('bubble'). "
+    "O balão ('bubble') deve conter ABSOLUTAMENTE APENAS a fala. Caso seja necessário identificar o personagem, faça isso através do texto da caixa de narração ('caption'), mas NUNCA identificando com dois pontos (ex: 'Nome:')."
 )
 
 
@@ -1556,6 +1558,7 @@ def _montar_prompt_artista_dsl(
         "digits or order labels on the panels. No panel may display a visible number. "
         "CRITICAL: Maintain absolute consistency in character faces, hairstyles, and CLOTHING/OUTFITS throughout all panels. "
         "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
+        "RULE FOR SPEECH BUBBLES: NEVER draw the character's name or identification (e.g. 'Name:', 'Intendente:', 'Laozi:') inside the speech bubble. The bubbles must contain ONLY the spoken dialogue text. If character identification is needed, it must be placed in the narrative box ('caption'), but NEVER using the 'Name:' format. "
         "Apply all items in 'fixes' as corrections. "
         + titulo_aviso
         + "JSON spec:\n"
@@ -1775,7 +1778,8 @@ def _revisor_primary(
     tentativa: int = 1
 ) -> dict:
     prompt_text = (
-        f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n\n"
+        f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n"
+        f"CRÍTICO: Ao validar textos ou prover feedback, exija e utilize estritamente o Português do Brasil (PT-BR). Evite e corrija Português de Portugal (PT-PT).\n\n"
         f"Instruções do Designer: {prompt_designer}\n\n"
         f"Verificações OBRIGATÓRIAS:\n"
         f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos, névoa e montanhas taoístas.\n"
@@ -1823,24 +1827,25 @@ def _revisor_primary(
         f"6. NÚMEROS NOS QUADRINHOS — CRÍTICO: Os painéis NÃO podem exibir números de ordem "
         f"(1, 2, 3...) em cantos, selos ou etiquetas. REPROVE imediatamente se qualquer painel "
         f"estiver numerado, indicando quais painéis têm números.\n"
-        f"7. FAIXAS VAZIAS — CRÍTICO: A arte deve preencher TODA a largura e altura da página. "
+        f"7. IDENTIFICAÇÃO DE PERSONAGENS NOS BALÕES — CRÍTICO: Os balões de fala NÃO devem conter a identificação do personagem (ex: 'Intendente: ', 'Laozi: ', 'Personagem: '). Devem conter APENAS o texto da fala. Caso seja necessário identificar o personagem, o narrador pode fazê-lo numa caixa de narração (narrator box), mas NUNCA identificando com dois pontos (ex: 'Nome:'). REPROVE imediatamente se houver o nome do personagem com dois pontos ou antes da fala dentro de um balão.\n"
+        f"8. FAIXAS VAZIAS — CRÍTICO: A arte deve preencher TODA a largura e altura da página. "
         f"REPROVE se houver faixas verticais ou horizontais de cor lisa/vazia nas laterais, "
         f"topo ou rodapé (sinal de que a imagem não preencheu o canvas 2:3).\n"
-        f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: A página deve ter entre 1 e 10 quadrinhos, "
+        f"9. QUANTIDADE E VARIEDADE DE QUADRINHOS: A página deve ter entre 1 e 10 quadrinhos, "
         f"com formatos VARIADOS (panorâmicos, verticais, lado a lado — não uma grade uniforme). "
         f"REPROVE se houver mais de 10 painéis ou se todos tiverem exatamente o mesmo formato repetido.\n"
     )
     if num_pagina > 1:
         prompt_text += (
-            f"8b. CONSISTÊNCIA DE PERSONAGENS — CRÍTICO: Os personagens devem manter o MESMO rosto, "
+            f"9b. CONSISTÊNCIA DE PERSONAGENS — CRÍTICO: Os personagens devem manter o MESMO rosto, "
             f"cabelo, barba e vestimenta em todas as páginas do conto. REPROVE se algum personagem "
             f"recorrente aparentar ser uma pessoa diferente (rosto, idade ou vestimenta inconsistente "
             f"com as páginas anteriores), descrevendo exatamente o que mudou.\n"
         )
     if geral:
-        prompt_text += f"9. Instruções Gerais:\n{geral}\n"
+        prompt_text += f"10. Instruções Gerais:\n{geral}\n"
     if especifica:
-        prompt_text += f"10. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
+        prompt_text += f"11. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
 
     prompt_text += (
         "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem sem exceção. "
@@ -1912,7 +1917,8 @@ def _revisor_fallback(
 
     if image is not None:
         prompt_text = (
-            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}.\n\n"
+            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}.\n"
+            f"CRÍTICO: Ao validar textos ou prover feedback, exija e utilize estritamente o Português do Brasil (PT-BR). Evite e corrija Português de Portugal (PT-PT).\n\n"
             f"Instruções do Designer: {prompt_designer}\n\n"
             f"Verificações OBRIGATÓRIAS:\n"
             f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos.\n"
@@ -1954,15 +1960,16 @@ def _revisor_fallback(
             f"Descreva qual painel está cortado (posição na página) para o artista corrigir.\n"
             f"6. NÚMEROS NOS QUADRINHOS — CRÍTICO: REPROVE se qualquer painel exibir números de "
             f"ordem (1, 2, 3...) em cantos, selos ou etiquetas.\n"
-            f"7. FAIXAS VAZIAS — CRÍTICO: REPROVE se houver faixas de cor lisa/vazia nas laterais, "
+            f"7. IDENTIFICAÇÃO DE PERSONAGENS NOS BALÕES — CRÍTICO: Os balões de fala NÃO devem conter a identificação do personagem (ex: 'Intendente: ', 'Laozi: '). Caso necessário, identifique na caixa de narração, sem usar ':'. REPROVE imediatamente se houver o nome do personagem antes da fala dentro de um balão.\n"
+            f"8. FAIXAS VAZIAS — CRÍTICO: REPROVE se houver faixas de cor lisa/vazia nas laterais, "
             f"topo ou rodapé (arte deve preencher todo o canvas 2:3).\n"
-            f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: Entre 1 e 10 quadrinhos por página, com "
+            f"9. QUANTIDADE E VARIEDADE DE QUADRINHOS: Entre 1 e 10 quadrinhos por página, com "
             f"formatos VARIADOS. REPROVE se houver mais de 10 painéis ou grade uniforme repetida.\n"
         )
         if geral:
-            prompt_text += f"9. Instruções Gerais:\n{geral}\n"
+            prompt_text += f"10. Instruções Gerais:\n{geral}\n"
         if especifica:
-            prompt_text += f"10. Instrução Específica (PRIORIDADE):\n{especifica}\n"
+            prompt_text += f"11. Instrução Específica (PRIORIDADE):\n{especifica}\n"
 
         prompt_text += (
             "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem. "
@@ -1982,6 +1989,7 @@ def _revisor_fallback(
         prompt_text = (
             f"Você é um revisor de roteiros de quadrinhos. Como o sistema de visão multimodal falhou, você deve "
             f"revisar a consistência do prompt criado pelo Designer Oriental para a página {num_pagina} de {total_paginas} de um conto taoísta:\n\n"
+            f"CRÍTICO: Verifique se o idioma é estritamente Português do Brasil (PT-BR). Evite e corrija Português de Portugal.\n\n"
             f"Prompt do Designer: {prompt_designer}\n"
         )
         if titulo and num_pagina == 1:
@@ -2046,11 +2054,13 @@ def _revisor_fallback_claude(
 ) -> dict:
     prompt_text = (
         f"Você é um revisor de quadrinhos detalhista e rigoroso. Sua tarefa é analisar a imagem de página de quadrinho anexa e verificar se ela atende às exigências do Designer Oriental:\n\n"
+        f"CRÍTICO: Ao validar textos ou prover feedback, exija e utilize estritamente o Português do Brasil (PT-BR). Evite e corrija Português de Portugal (PT-PT).\n\n"
         f"Instruções do Designer: {prompt_designer}\n"
         f"Página: {num_pagina} de {total_paginas}\n\n"
         f"Verificações obrigatórias:\n"
         f"1. Estilo Visual: Estilo clássico de pintura em nanquim chinesa (ink wash painting), traços fluidos de pincel, névoa e montanhas taoístas.\n"
         f"2. Caixas de texto/balões de diálogo: Verifique se existem balões de diálogo e caixas de narração adequados na página. Como as IAs de geração costumam criar textos ilegíveis, você deve aprovar a imagem se as caixas de texto/balões de diálogo estiverem presentes e bem dispostas. Não rejeite a imagem por causa de letras borradas ou ilegíveis, desde que os balões e caixas existam e o layout visual represente o roteiro.\n"
+        f"2b. IDENTIFICAÇÃO DE PERSONAGENS NOS BALÕES — CRÍTICO: Os balões de fala NÃO devem conter a identificação do personagem (ex: 'Intendente: ', 'Laozi: '). Devem conter APENAS o texto da fala. Caso seja necessário identificar o personagem, deve ser feito numa caixa de narração, mas NUNCA identificando com dois pontos. REPROVE imediatamente se houver o nome do personagem com dois pontos ou antes da fala dentro de um balão.\n"
     )
     if titulo:
         prompt_text += f"3. Título (Pág 1): Se esta for a página 1, DEVE haver um título destacado no topo da imagem contendo exatamente o texto em português: '{titulo}'. Não aprove se o título estiver incorreto, truncado, ausente ou se for outro título diferente do estabelecido (por exemplo, se o artista desenhar algo diferente de '{titulo}').\n"
@@ -3966,6 +3976,7 @@ def processar_conto_taoista(
                 total_paginas=total_paginas,
                 artista_model=artista_model,
                 output_path=fluxo_path,
+                tale_dir=tale_dir,
             )
             if resultado_fluxo:
                 # Cópia também na pasta do conto, para o explorador de arquivos
