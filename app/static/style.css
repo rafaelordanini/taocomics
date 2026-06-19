@@ -106,6 +106,7 @@ body {
     font-size: 0.9rem;
     color: var(--text-secondary);
     font-weight: 400;
+    padding-right: 120px; /* Margem de segurança ampliada para ícones de extensões do navegador (ex: Google Tradutor) */
 }
 
 /* Layout Modular (3 colunas) */
@@ -617,6 +618,174 @@ textarea {
 .btn-icon:hover {
     color: var(--accent);
     background: rgba(255,255,255,0.05);
+}
+.comic-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+.btn-delete:hover {
+    color: #ff5c5c;
+    background: rgba(255, 92, 92, 0.1);
+}
+
+/* Fila de Lote */
+.btn-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.batch-queue-panel {
+    margin-top: 0.7rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+.batch-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+    background: rgba(255,255,255,0.03);
+}
+.batch-icon { font-size: 1.05rem; }
+.batch-aguardando .batch-icon { color: var(--text-secondary); }
+.batch-processando .batch-icon { color: var(--color-artista); }
+.batch-concluido .batch-icon { color: var(--color-revisor); }
+.batch-erro .batch-icon { color: var(--color-error); }
+.batch-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.batch-status {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+}
+.spinning { animation: spin 1.2s linear infinite; }
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+/* Explorador de Arquivos */
+.browser-breadcrumb {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-wrap: wrap;
+}
+.browser-breadcrumb .crumb {
+    cursor: pointer;
+    color: var(--accent);
+}
+.browser-breadcrumb .crumb:hover {
+    text-decoration: underline;
+}
+.browser-breadcrumb .crumb-sep {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+.browser-list {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 120px;
+}
+.browser-loading {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem 1rem;
+    font-size: 0.9rem;
+}
+.browser-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    transition: var(--transition);
+}
+.browser-row:hover {
+    background: rgba(255,255,255,0.04);
+}
+.browser-row-main {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex: 1;
+    cursor: pointer;
+    min-width: 0;
+}
+.browser-icon {
+    color: var(--text-secondary);
+    font-size: 1.3rem;
+}
+.browser-icon.is-dir {
+    color: #e6b800;
+}
+.browser-name {
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+.browser-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.browser-viewer {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 120px;
+}
+.viewer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+}
+.viewer-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.viewer-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 1rem;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+}
+.viewer-image {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
 }
 
 /* Modal de Visualização */

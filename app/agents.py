@@ -62,11 +62,11 @@ class RoteiroHQ(BaseModel):
 
 def clean_json_text(text: str) -> str:
     text = text.strip()
-    
+
     # Try to find the JSON boundaries
     first_brace = text.find('{')
     first_bracket = text.find('[')
-    
+
     start_idx = -1
     end_char = ''
     if first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket):
@@ -75,12 +75,12 @@ def clean_json_text(text: str) -> str:
     elif first_bracket != -1:
         start_idx = first_bracket
         end_char = ']'
-        
+
     if start_idx != -1:
         end_idx = text.rfind(end_char)
         if end_idx != -1 and end_idx > start_idx:
             return text[start_idx:end_idx + 1].strip()
-            
+
     # Fallback to standard stripping if no braces/brackets are found
     if text.startswith("```json"):
         text = text[7:]
@@ -91,6 +91,92 @@ def clean_json_text(text: str) -> str:
     return text.strip()
 
 
+def parse_json_robust(text: str) -> dict:
+    """
+    Tenta fazer parse do JSON gerado por um LLM com múltiplas estratégias de reparo:
+    1. parse direto após clean_json_text
+    2. json-repair (se disponível)
+    3. reparo manual de vírgulas faltando antes de } e ]
+    4. truncamento progressivo até o último par de chaves válido
+    """
+    cleaned = clean_json_text(text)
+
+    # Tentativa 1: parse direto
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Tentativa 2: json_repair (opcional, não instalado por padrão)
+    try:
+        import json_repair  # type: ignore
+        return json_repair.loads(cleaned)
+    except Exception:
+        pass
+
+    # Tentativa 3: reparo manual — vírgulas faltando antes de } ou ]
+    import re as _re
+    repaired = _re.sub(r'(?<=["\d\]truefals])\s*\n(\s*[}\]])', r',\n\1', cleaned)
+    # Remove vírgulas antes de } ou ] (trailing commas)
+    repaired = _re.sub(r',\s*([}\]])', r'\1', repaired)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # Tentativa 4: truncar no último } válido para capturar objeto parcial
+    for end_char in ('}', ']'):
+        pos = len(cleaned)
+        while pos > 0:
+            pos = cleaned.rfind(end_char, 0, pos)
+            if pos == -1:
+                break
+            try:
+                result = json.loads(cleaned[:pos + 1])
+                return result
+            except json.JSONDecodeError:
+                pos -= 1
+
+    # Nenhuma estratégia funcionou — relança o erro original para log claro
+    raise json.JSONDecodeError(
+        f"Não foi possível reparar o JSON do LLM (tentadas 4 estratégias). "
+        f"Trecho inicial: {cleaned[:120]}",
+        cleaned, 0
+    )
+
+
+
+def _pil_to_b64(image: "Image.Image") -> str:
+    """Converte uma imagem PIL em PNG base64 para envio ao worker do Antigravity."""
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _run_antigravity_text(prompt: str, system: str = None, model: str = None, image: "Image.Image" = None) -> dict:
+    """Chama o worker do Antigravity (agy) rodando no host. Retorna {'content': texto}.
+    Aceita uma imagem PIL opcional para análise multimodal (Designer/Revisor/Especialista).
+    Levanta exceção se o worker não estiver configurado ou falhar."""
+    worker_url = os.environ.get("ANTIGRAVITY_WORKER_URL", "").rstrip("/")
+    if not worker_url:
+        raise RuntimeError("ANTIGRAVITY_WORKER_URL não configurado.")
+    worker_token = os.environ.get("ANTIGRAVITY_WORKER_TOKEN", "") or os.environ.get("WORKER_TOKEN", "")
+    headers = {"Authorization": f"Bearer {worker_token}"} if worker_token else {}
+    payload = {"prompt": prompt}
+    if system:
+        payload["system"] = system
+    if model:
+        payload["model"] = model
+    if image is not None:
+        payload["image_b64"] = _pil_to_b64(image)
+    resp = httpx.post(f"{worker_url}/run-text", json=payload, headers=headers, timeout=320.0)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Antigravity worker retornou {resp.status_code}: {resp.text[:300]}")
+    text = resp.json().get("text", "")
+    if not text:
+        raise RuntimeError("Antigravity worker retornou texto vazio.")
+    return {"content": text, "reasoning": None}
+
 
 def run_with_retry(
     agent_name: str,
@@ -100,6 +186,9 @@ def run_with_retry(
     *args,
     **kwargs
 ) -> Any:
+    # Nota: o backup do Antigravity (Gemini Pro via assinatura) é tratado dentro
+    # de _executar_agente_texto_visao, então cobre todos os agentes de texto/visão
+    # automaticamente, entre o Codex e o Poe.
     try:
         sse_send(f"[{agent_name}] Tentando usar IA principal...")
         result = primary_fn(*args, **kwargs)
@@ -581,6 +670,29 @@ def _executar_agente_texto_visao(
             print(msg_fail)
         last_error = e
 
+    # 2.5. Antigravity (Gemini Pro via assinatura no host) — backup gratuito
+    #      multimodal. Cobre Designer/Revisor/Especialista automaticamente.
+    if os.environ.get("ANTIGRAVITY_WORKER_URL"):
+        try:
+            if sse_send:
+                sse_send(f"[{agent_name}] Usando o modelo: Antigravity (Gemini Pro)")
+            else:
+                print(f"[{agent_name}] Tentando usar Antigravity (Gemini Pro)...")
+            res = _run_antigravity_text(prompt, system=system_instruction, image=image)
+            msg_succ = f"[{agent_name}] Sucesso usando Antigravity (Gemini Pro)!"
+            if sse_send:
+                sse_send(msg_succ)
+            else:
+                print(msg_succ)
+            return res
+        except Exception as e:
+            msg_fail = f"[{agent_name}] Antigravity falhou ou indisponível: {str(e)}"
+            if sse_send:
+                sse_send(msg_fail)
+            else:
+                print(msg_fail)
+            last_error = e
+
     # 3. Tentar fallback nativo gratuito (Gemini Pro/Flash), se ainda não tentado.
     #    Se falhar, NÃO propaga: segue para o Poe (4º) e, só por último, o
     #    OpenRouter (via run_with_retry).
@@ -650,36 +762,36 @@ def _generar_imagem_poe(prompt: str, api_key: str = None) -> dict:
     key = api_key or os.getenv("POE_API_KEY") or "sk-poe-5dU7XMSEIjUgZsYWFt-n47g5GwOgXazF7b0k95TYATk"
     client = openai.OpenAI(
         api_key=key,
-        base_url="https://api.poe.com/v1"
+        base_url="https://api.poe.com/v1",
+        timeout=300.0,  # Poe pode demorar até 5 min para gerar imagem
     )
-    
+
     full_prompt = f"Generate an image: {prompt}. Image size must be 1024x1536. Please provide the image."
-    
-    response = client.chat.completions.create(
-        model="gpt-image-2",
-        messages=[{"role": "user", "content": full_prompt}],
-        timeout=120.0
-    )
-    
-    content = response.choices[0].message.content or ""
-    match = re.search(r"!\[.*?\]\((https?://[^\)]+)\)", content)
-    if not match:
-        match = re.search(r"(https?://[^\s\)]+)", content)
-        
-    if not match:
-        raise ValueError(f"Não foi possível encontrar a URL da imagem na resposta do Poe. Resposta: {content}")
-        
-    img_url = match.group(1)
-    
-    import httpx
-    img_resp = httpx.get(img_url, timeout=60.0)
-    img_resp.raise_for_status()
-    
-    b64_data = base64.b64encode(img_resp.content).decode("utf-8")
-    return {
-        "url": img_url,
-        "b64_json": b64_data
-    }
+
+    last_err = None
+    for attempt in range(2):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-image-2",
+                messages=[{"role": "user", "content": full_prompt}],
+            )
+            content = response.choices[0].message.content or ""
+            match = re.search(r"!\[.*?\]\((https?://[^\)]+)\)", content)
+            if not match:
+                match = re.search(r"(https?://[^\s\)\"]+)", content)
+            if not match:
+                raise ValueError(f"URL da imagem não encontrada na resposta do Poe. Resposta: {content[:300]}")
+            img_url = match.group(1)
+            img_resp = httpx.get(img_url, timeout=120.0)
+            img_resp.raise_for_status()
+            b64_data = base64.b64encode(img_resp.content).decode("utf-8")
+            return {"url": img_url, "b64_json": b64_data}
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                time.sleep(5)
+
+    raise last_err
 
 
 # --------------------------
@@ -721,9 +833,9 @@ def _roteirista_primary(client, conto: str, geral: str = None, especifica: str =
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -833,7 +945,9 @@ DESIGNER_JSON_SCHEMA = (
     "}\n"
     "Regras: inclua TODOS os quadrinhos do roteiro (6 a 10 painéis). Seja detalhista em 'scene' e "
     "'characters', mas evite repetir descritores de estilo em cada painel (eles ficam em 'style'). "
-    "Preserve os textos de balões/narração fielmente do roteiro."
+    "Preserve os textos de balões/narração fielmente do roteiro. "
+    "MUITO IMPORTANTE: NÃO inclua JAMAIS o nome ou identificação do personagem (ex: 'Intendente:', 'Laozi:', 'Yu Hsing:') no texto do balão ('bubble'). "
+    "O balão ('bubble') deve conter ABSOLUTAMENTE APENAS a fala. Caso seja necessário identificar o personagem, faça isso através do texto da caixa de narração ('caption'), mas NUNCA identificando com dois pontos (ex: 'Nome:')."
 )
 
 
@@ -1005,9 +1119,9 @@ def _designer_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -1038,7 +1152,7 @@ def _designer_fallback(
 # 3. Agente Artista
 # --------------------------
 
-def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None) -> dict:
+def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None, face_paths: list = None) -> dict:
     worker_url = os.environ.get("CODEX_WORKER_URL", "").rstrip("/")
     worker_token = os.environ.get("CODEX_WORKER_TOKEN", "")
     logging.info(f"[codex-worker] CODEX_WORKER_URL={worker_url!r}")
@@ -1056,11 +1170,26 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
     if sse_send:
         sse_send("[Artista (Desenho)] Enviando job para o Codex... (geração assíncrona)")
 
+    # Recortes de rosto da biblioteca de personagens — enviados em base64 para o
+    # worker salvá-los em disco e anexá-los ao prompt do Codex
+    images_b64 = []
+    for fp in (face_paths or []):
+        try:
+            import base64 as _b64mod
+            with open(fp, "rb") as f:
+                images_b64.append(_b64mod.b64encode(f.read()).decode("utf-8"))
+        except Exception:
+            pass
+
+    payload = {"prompt": prompt}
+    if images_b64:
+        payload["images_b64"] = images_b64
+
     # Envia o job e recebe job_id imediatamente (evita timeout do Cloudflare Tunnel)
     try:
         submit_resp = httpx.post(
             f"{worker_url}/generate-image",
-            json={"prompt": prompt},
+            json=payload,
             headers=headers,
             timeout=30.0
         )
@@ -1117,9 +1246,9 @@ def _generar_imagem_codex(prompt: str, modelos_paths: list = None, sse_send=None
     raise RuntimeError(f"Codex não respondeu após {MAX_WAIT}s. Worker travado — reinicie o serviço na VM com: bash ~/codex-worker/restart.sh")
 
 
-def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None, sse_send=None) -> dict:
+def _artista_primary(client, prompt: str, g_client=None, model_name: str = "openai/gpt-image-2", poe_key: str = None, modelos_paths: list = None, sse_send=None, face_paths: list = None) -> dict:
     if model_name == "codex/gpt-image-2":
-        return _generar_imagem_codex(prompt, modelos_paths=modelos_paths, sse_send=sse_send)
+        return _generar_imagem_codex(prompt, modelos_paths=modelos_paths, sse_send=sse_send, face_paths=face_paths)
     elif model_name == "poe/gpt-image-2":
         return _generar_imagem_poe(prompt, api_key=poe_key)
     elif model_name == "openai/gpt-image-2":
@@ -1383,7 +1512,9 @@ def _montar_prompt_artista_dsl(
     dsl: dict,
     feedback_revisor: str = None,
     feedback_especialista: str = None,
-    diretiva_lider: str = None
+    diretiva_lider: str = None,
+    num_pagina: int = None,
+    titulo: str = None
 ) -> str:
     """
     Monta o prompt final para o Artista a partir do JSON DSL do Designer.
@@ -1402,13 +1533,35 @@ def _montar_prompt_artista_dsl(
 
     # JSON compacto (sem espaços supérfluos) como linguagem de comunicação com o Artista
     spec = json.dumps(dsl, ensure_ascii=False, separators=(",", ":"))
+
+    titulo_aviso = ""
+    pnum = num_pagina or dsl.get("page") or dsl.get("pagina") or dsl.get("num_pagina") or dsl.get("pagina_numero")
+    titulo_str = titulo or dsl.get("titulo") or dsl.get("title") or ""
+    if pnum == 1:
+        if titulo_str:
+            titulo_aviso = (
+                f"PAGE 1 COVER RULE (CRITICAL): this is the FIRST PAGE. You MUST display the story title "
+                f"'{titulo_str}' prominently at the top of the page as a large decorative header. "
+                "The title MUST be clearly legible. This is mandatory — no title = automatic rejection. "
+            )
+        else:
+            titulo_aviso = (
+                "PAGE 1 COVER RULE (CRITICAL): this is the FIRST PAGE. You MUST display the story title "
+                "prominently at the top of the page as a large decorative header. "
+                "This is mandatory — no title = automatic rejection. "
+            )
+
     instrucao = (
         "Render this comic page from the structured JSON spec below. "
         "Draw every panel in 'panels' in order, using the shared 'style'. "
         "IMPORTANT: the panel order/indices are READING ORDER ONLY — NEVER draw numbers, "
         "digits or order labels on the panels. No panel may display a visible number. "
+        "CRITICAL: Maintain absolute consistency in character faces, hairstyles, and CLOTHING/OUTFITS throughout all panels. "
         "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
-        "Apply all items in 'fixes' as corrections. JSON spec:\n"
+        "RULE FOR SPEECH BUBBLES: NEVER draw the character's name or identification (e.g. 'Name:', 'Intendente:', 'Laozi:') inside the speech bubble. The bubbles must contain ONLY the spoken dialogue text. If character identification is needed, it must be placed in the narrative box ('caption'), but NEVER using the 'Name:' format. "
+        "Apply all items in 'fixes' as corrections. "
+        + titulo_aviso
+        + "JSON spec:\n"
     )
     return instrucao + spec
 
@@ -1419,7 +1572,9 @@ def _orquestrador_montar_prompt_artista(
     feedback_revisor: str = None,
     feedback_especialista: str = None,
     diretiva_lider: str = None,
-    estilo_fixo: str = None
+    estilo_fixo: str = None,
+    num_pagina: int = None,
+    titulo: str = None
 ) -> str:
     """
     Orquestrador centraliza toda informação destinada ao Artista.
@@ -1434,7 +1589,7 @@ def _orquestrador_montar_prompt_artista(
             dsl["style"] = estilo_fixo
         elif estilo_fixo:
             dsl["style"] = estilo_fixo  # sobrescreve para garantir consistência
-        return _montar_prompt_artista_dsl(g_client, dsl, feedback_revisor, feedback_especialista, diretiva_lider)
+        return _montar_prompt_artista_dsl(g_client, dsl, feedback_revisor, feedback_especialista, diretiva_lider, num_pagina=num_pagina, titulo=titulo)
 
     # Legado: prompt em texto livre (compatibilidade com prompts antigos cacheados)
     base = _comprimir_prompt_designer(g_client, prompt_designer)
@@ -1457,38 +1612,28 @@ def _orquestrador_montar_prompt_artista(
     return ". ".join(parts)
 
 
-def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None) -> dict:
-    CODEX_MAX_RETRIES = 2
-    models_to_try = []
-
-    # Até 2 tentativas no Codex antes de cair no fallback
-    for _ in range(CODEX_MAX_RETRIES):
-        models_to_try.append("codex/gpt-image-2")
-
-    # Fallback: Poe GPT-Image se Codex falhar
+def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_model: str, sse_send: Callable[[str], None], poe_key: str = None, modelos_paths: list = None, ref_image: "Image.Image" = None, face_paths: list = None) -> dict:
+    # CADEIA DE FALLBACK DO ARTISTA — exclusivamente gpt-image-2 em todas as vias:
+    #   1. Codex (gratuito via ChatGPT Plus) — 2 tentativas com restart do worker entre elas
+    #   2. Poe (gpt-image-2)
+    #   3. OpenAI (gpt-image-2 direto)
+    # Nenhum outro modelo de imagem é permitido para manter consistência visual.
+    models_to_try = ["codex/gpt-image-2", "codex/gpt-image-2"]
     if poe_key:
         models_to_try.append("poe/gpt-image-2")
+    if o_client:
+        models_to_try.append("openai/gpt-image-2")
 
     last_error = None
     for idx, model in enumerate(models_to_try):
-        is_retry = model == "codex/gpt-image-2" and idx > 0
+        is_codex_retry = model == "codex/gpt-image-2" and idx > 0
         attempt_label = f"Tentativa {idx+1}/{len(models_to_try)}"
-        if is_retry:
-            sse_send(f"[Artista (Desenho)] Codex travou — reiniciando worker e tentando novamente... ({attempt_label})")
+        if is_codex_retry:
+            sse_send(f"[Artista (Desenho)] Codex falhou — reiniciando worker e tentando novamente... ({attempt_label})")
         else:
             sse_send(f"[Artista (Desenho)] Tentando gerar imagem com o modelo: {model} ({attempt_label})...")
         try:
-            if model == "openai/gpt-image-2":
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            elif model == "google/gemini-2.5-flash-image" or model == "google/imagen-4.0-generate-001":
-                res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            elif model == "pollinations/flux":
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
-            elif model.startswith("openrouter/"):
-                model_id = model.replace("openrouter/", "")
-                res = _artista_fallback(or_client, prompt, model_id=model_id)
-            else:
-                res = _artista_primary(o_client, prompt, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send)
+            res = _artista_primary(o_client, prompt, g_client=g_client, model_name=model, poe_key=poe_key, modelos_paths=modelos_paths, sse_send=sse_send, face_paths=face_paths)
 
             res["model_used"] = model
             sse_send(f"[Artista (Desenho)] Sucesso usando o modelo: {model}!")
@@ -1497,8 +1642,8 @@ def gerar_imagem_artista(o_client, or_client, g_client, prompt: str, primary_mod
             err_str = str(e)
             sse_send(f"[Artista (Desenho)] Falha com o modelo {model}: {err_str}")
             last_error = e
-            # Se Codex travou, solicita restart do worker antes de tentar novamente
-            if model == "codex/gpt-image-2" and "timeout" in err_str.lower():
+            if model == "codex/gpt-image-2":
+                # Reinicia o worker em qualquer falha do Codex antes da próxima tentativa
                 _restart_codex_worker()
 
     raise last_error or RuntimeError("Todos os modelos de geração de imagem falharam.")
@@ -1555,6 +1700,11 @@ def _verificacao_focada_pagina(g_client, image: Image.Image, num_pagina: int, to
                 "PAINÉIS NUMERADOS: há números de ordem visíveis nos quadrinhos. "
                 "Redesenhe SEM nenhum número, dígito ou etiqueta de ordem nos painéis."
             )
+        if num_pagina == 1 and not dados.get("titulo_presente"):
+            violacoes.append(
+                "TÍTULO AUSENTE: esta é a página 1 (capa) e NÃO há título visível. "
+                "A página 1 DEVE exibir o título do conto em destaque no topo. Redesenhe incluindo o título."
+            )
         if num_pagina != 1 and dados.get("titulo_presente"):
             violacoes.append(
                 f"TÍTULO INDEVIDO: esta é a página {num_pagina} e há um título de capa. "
@@ -1568,6 +1718,48 @@ def _verificacao_focada_pagina(g_client, image: Image.Image, num_pagina: int, to
         return violacoes
     except Exception as e:
         logging.warning(f"[verificacao_focada] Falha na verificação focada da página {num_pagina}: {e}")
+        return []
+
+
+def _verificacao_consistencia_personagens(g_client, image: Image.Image, pagina1: Image.Image, num_pagina: int) -> list:
+    """
+    Compara a página atual com a página 1 aprovada e verifica se os personagens
+    recorrentes mantêm o MESMO rosto/cabelo/vestimenta. A IA só observa; quem
+    decide é o código. Retorna lista de violações (vazia = passou).
+    """
+    try:
+        prompt = (
+            "You are comparing two pages of the SAME comic story. "
+            "IMAGE 1 is page 1 (the canonical character reference). "
+            f"IMAGE 2 is page {num_pagina}.\n\n"
+            "Answer ONLY with a strict JSON object, no prose:\n"
+            '{"personagens_consistentes": true/false, "diferencas": "short description in Portuguese"}\n\n'
+            "- personagens_consistentes: do the recurring characters in IMAGE 2 have the EXACT SAME face, "
+            "facial features, hairstyle, facial hair AND EXACT SAME CLOTHING/OUTFIT as the corresponding characters in IMAGE 1? "
+            "Different clothing or a different-looking person is an IMMEDIATE REJECTION (false).\n"
+            "- diferencas: if false, describe exactly what changed (which character, what differs: face shape, "
+            "beard, hair, clothes...). If true, use an empty string."
+        )
+        response = g_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[pagina1, image, prompt],
+        )
+        texto = (response.text or "").strip()
+        inicio = texto.find("{")
+        fim = texto.rfind("}")
+        if inicio == -1 or fim == -1:
+            return []
+        dados = json.loads(texto[inicio:fim + 1])
+        if dados.get("personagens_consistentes") is False:
+            diferencas = dados.get("diferencas") or "personagens com aparência diferente da página 1"
+            return [
+                "INCONSISTÊNCIA DE PERSONAGENS: os personagens desta página estão diferentes da página 1. "
+                f"Detalhes: {diferencas}. Redesenhe mantendo EXATAMENTE o mesmo rosto, cabelo, barba e "
+                "vestimenta dos personagens da imagem de referência (página 1)."
+            ]
+        return []
+    except Exception as e:
+        logging.warning(f"[consistencia_personagens] Falha na verificação da página {num_pagina}: {e}")
         return []
 
 
@@ -1586,11 +1778,13 @@ def _revisor_primary(
     tentativa: int = 1
 ) -> dict:
     prompt_text = (
-        f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n\n"
+        f"Você é um revisor de quadrinhos. Analise a imagem da página {num_pagina} de {total_paginas}.\n"
+        f"CRÍTICO: Ao validar textos ou prover feedback, exija e utilize estritamente o Português do Brasil (PT-BR). Evite e corrija Português de Portugal (PT-PT).\n\n"
         f"Instruções do Designer: {prompt_designer}\n\n"
         f"Verificações OBRIGATÓRIAS:\n"
         f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos, névoa e montanhas taoístas.\n"
         f"2. Caixas de texto/balões: Aprove se existirem e estiverem bem dispostos, mesmo com texto ilegível.\n"
+        f"5. CONSISTÊNCIA DE ROUPAS E ROSTOS: Personagens recorrentes DEVEM manter EXATAMENTE os mesmos rostos e as MESMAS ROUPAS/VESTIMENTAS da página 1. Se houver troca injustificada de roupa ou rosto diferente, REPROVE IMEDIATAMENTE.\n"
     )
     if num_pagina == 1:
         if titulo:
@@ -1633,17 +1827,25 @@ def _revisor_primary(
         f"6. NÚMEROS NOS QUADRINHOS — CRÍTICO: Os painéis NÃO podem exibir números de ordem "
         f"(1, 2, 3...) em cantos, selos ou etiquetas. REPROVE imediatamente se qualquer painel "
         f"estiver numerado, indicando quais painéis têm números.\n"
-        f"7. FAIXAS VAZIAS — CRÍTICO: A arte deve preencher TODA a largura e altura da página. "
+        f"7. IDENTIFICAÇÃO DE PERSONAGENS NOS BALÕES — CRÍTICO: Os balões de fala NÃO devem conter a identificação do personagem (ex: 'Intendente: ', 'Laozi: ', 'Personagem: '). Devem conter APENAS o texto da fala. Caso seja necessário identificar o personagem, o narrador pode fazê-lo numa caixa de narração (narrator box), mas NUNCA identificando com dois pontos (ex: 'Nome:'). REPROVE imediatamente se houver o nome do personagem com dois pontos ou antes da fala dentro de um balão.\n"
+        f"8. FAIXAS VAZIAS — CRÍTICO: A arte deve preencher TODA a largura e altura da página. "
         f"REPROVE se houver faixas verticais ou horizontais de cor lisa/vazia nas laterais, "
         f"topo ou rodapé (sinal de que a imagem não preencheu o canvas 2:3).\n"
-        f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: A página deve ter entre 1 e 10 quadrinhos, "
+        f"9. QUANTIDADE E VARIEDADE DE QUADRINHOS: A página deve ter entre 1 e 10 quadrinhos, "
         f"com formatos VARIADOS (panorâmicos, verticais, lado a lado — não uma grade uniforme). "
         f"REPROVE se houver mais de 10 painéis ou se todos tiverem exatamente o mesmo formato repetido.\n"
     )
+    if num_pagina > 1:
+        prompt_text += (
+            f"9b. CONSISTÊNCIA DE PERSONAGENS — CRÍTICO: Os personagens devem manter o MESMO rosto, "
+            f"cabelo, barba e vestimenta em todas as páginas do conto. REPROVE se algum personagem "
+            f"recorrente aparentar ser uma pessoa diferente (rosto, idade ou vestimenta inconsistente "
+            f"com as páginas anteriores), descrevendo exatamente o que mudou.\n"
+        )
     if geral:
-        prompt_text += f"9. Instruções Gerais:\n{geral}\n"
+        prompt_text += f"10. Instruções Gerais:\n{geral}\n"
     if especifica:
-        prompt_text += f"10. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
+        prompt_text += f"11. Instrução Específica (PRIORIDADE ABSOLUTA):\n{especifica}\n"
 
     prompt_text += (
         "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem sem exceção. "
@@ -1706,16 +1908,17 @@ def _revisor_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     if image is not None:
         backup_models = [m for m in backup_models if m != "deepseek/deepseek-chat"]
 
     if image is not None:
         prompt_text = (
-            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}.\n\n"
+            f"Revisor de quadrinhos — página {num_pagina}/{total_paginas}.\n"
+            f"CRÍTICO: Ao validar textos ou prover feedback, exija e utilize estritamente o Português do Brasil (PT-BR). Evite e corrija Português de Portugal (PT-PT).\n\n"
             f"Instruções do Designer: {prompt_designer}\n\n"
             f"Verificações OBRIGATÓRIAS:\n"
             f"1. Estilo Visual: Pintura em nanquim chinesa, traços fluidos.\n"
@@ -1757,15 +1960,16 @@ def _revisor_fallback(
             f"Descreva qual painel está cortado (posição na página) para o artista corrigir.\n"
             f"6. NÚMEROS NOS QUADRINHOS — CRÍTICO: REPROVE se qualquer painel exibir números de "
             f"ordem (1, 2, 3...) em cantos, selos ou etiquetas.\n"
-            f"7. FAIXAS VAZIAS — CRÍTICO: REPROVE se houver faixas de cor lisa/vazia nas laterais, "
+            f"7. IDENTIFICAÇÃO DE PERSONAGENS NOS BALÕES — CRÍTICO: Os balões de fala NÃO devem conter a identificação do personagem (ex: 'Intendente: ', 'Laozi: '). Caso necessário, identifique na caixa de narração, sem usar ':'. REPROVE imediatamente se houver o nome do personagem antes da fala dentro de um balão.\n"
+            f"8. FAIXAS VAZIAS — CRÍTICO: REPROVE se houver faixas de cor lisa/vazia nas laterais, "
             f"topo ou rodapé (arte deve preencher todo o canvas 2:3).\n"
-            f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: Entre 1 e 10 quadrinhos por página, com "
+            f"9. QUANTIDADE E VARIEDADE DE QUADRINHOS: Entre 1 e 10 quadrinhos por página, com "
             f"formatos VARIADOS. REPROVE se houver mais de 10 painéis ou grade uniforme repetida.\n"
         )
         if geral:
-            prompt_text += f"9. Instruções Gerais:\n{geral}\n"
+            prompt_text += f"10. Instruções Gerais:\n{geral}\n"
         if especifica:
-            prompt_text += f"10. Instrução Específica (PRIORIDADE):\n{especifica}\n"
+            prompt_text += f"11. Instrução Específica (PRIORIDADE):\n{especifica}\n"
 
         prompt_text += (
             "\nResponda APENAS 'APROVADO' se TODAS as verificações passarem. "
@@ -1785,6 +1989,7 @@ def _revisor_fallback(
         prompt_text = (
             f"Você é um revisor de roteiros de quadrinhos. Como o sistema de visão multimodal falhou, você deve "
             f"revisar a consistência do prompt criado pelo Designer Oriental para a página {num_pagina} de {total_paginas} de um conto taoísta:\n\n"
+            f"CRÍTICO: Verifique se o idioma é estritamente Português do Brasil (PT-BR). Evite e corrija Português de Portugal.\n\n"
             f"Prompt do Designer: {prompt_designer}\n"
         )
         if titulo and num_pagina == 1:
@@ -1849,11 +2054,13 @@ def _revisor_fallback_claude(
 ) -> dict:
     prompt_text = (
         f"Você é um revisor de quadrinhos detalhista e rigoroso. Sua tarefa é analisar a imagem de página de quadrinho anexa e verificar se ela atende às exigências do Designer Oriental:\n\n"
+        f"CRÍTICO: Ao validar textos ou prover feedback, exija e utilize estritamente o Português do Brasil (PT-BR). Evite e corrija Português de Portugal (PT-PT).\n\n"
         f"Instruções do Designer: {prompt_designer}\n"
         f"Página: {num_pagina} de {total_paginas}\n\n"
         f"Verificações obrigatórias:\n"
         f"1. Estilo Visual: Estilo clássico de pintura em nanquim chinesa (ink wash painting), traços fluidos de pincel, névoa e montanhas taoístas.\n"
         f"2. Caixas de texto/balões de diálogo: Verifique se existem balões de diálogo e caixas de narração adequados na página. Como as IAs de geração costumam criar textos ilegíveis, você deve aprovar a imagem se as caixas de texto/balões de diálogo estiverem presentes e bem dispostas. Não rejeite a imagem por causa de letras borradas ou ilegíveis, desde que os balões e caixas existam e o layout visual represente o roteiro.\n"
+        f"2b. IDENTIFICAÇÃO DE PERSONAGENS NOS BALÕES — CRÍTICO: Os balões de fala NÃO devem conter a identificação do personagem (ex: 'Intendente: ', 'Laozi: '). Devem conter APENAS o texto da fala. Caso seja necessário identificar o personagem, deve ser feito numa caixa de narração, mas NUNCA identificando com dois pontos. REPROVE imediatamente se houver o nome do personagem com dois pontos ou antes da fala dentro de um balão.\n"
     )
     if titulo:
         prompt_text += f"3. Título (Pág 1): Se esta for a página 1, DEVE haver um título destacado no topo da imagem contendo exatamente o texto em português: '{titulo}'. Não aprove se o título estiver incorreto, truncado, ausente ou se for outro título diferente do estabelecido (por exemplo, se o artista desenhar algo diferente de '{titulo}').\n"
@@ -1926,9 +2133,9 @@ def _roteirista_ponderar_roteiro_primary(client, roteiro: dict, parecer: str) ->
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -1946,7 +2153,7 @@ def _roteirista_ponderar_roteiro_primary(client, roteiro: dict, parecer: str) ->
             content = extract_content_from_openai(response)
             clean_content = clean_json_text(content)
             print(f"[Roteirista Ponderador Fallback] Sucesso usando IA de Backup ({model}) no OpenRouter!")
-            return json.loads(clean_content)
+            return parse_json_robust(clean_content)
         except Exception as e:
             print(f"[Roteirista Ponderador Fallback] Falha com IA de Backup ({model}): {str(e)}")
             last_error = e
@@ -1998,7 +2205,7 @@ def _roteirista_ponderar_roteiro_fallback(client, roteiro: dict, parecer: str) -
     try:
         content = res["content"]
         clean_content = clean_json_text(content)
-        return json.loads(clean_content)
+        return parse_json_robust(clean_content)
     except Exception:
         return {"decisao": "PROSSEGUIR"}
 
@@ -2044,7 +2251,7 @@ def _artista_ponderar_pagina_primary(client, prompt_designer: str, parecer: str)
     )
     try:
         clean_content = clean_json_text(res["content"])
-        return json.loads(clean_content)
+        return parse_json_robust(clean_content)
     except Exception:
         return {"decisao": "PROSSEGUIR"}
 
@@ -2070,9 +2277,9 @@ def _artista_ponderar_pagina_fallback(client, prompt_designer: str, parecer: str
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -2090,7 +2297,7 @@ def _artista_ponderar_pagina_fallback(client, prompt_designer: str, parecer: str
             content = extract_content_from_openai(response)
             clean_content = clean_json_text(content)
             print(f"[Artista Ponderador Fallback] Sucesso usando IA de Backup ({model}) no OpenRouter!")
-            return json.loads(clean_content)
+            return parse_json_robust(clean_content)
         except Exception as e:
             print(f"[Artista Ponderador Fallback] Falha com IA de Backup ({model}): {str(e)}")
             last_error = e
@@ -2212,9 +2419,9 @@ def _especialista_roteiro_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -2343,9 +2550,9 @@ def _especialista_pagina_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     if image is not None:
         backup_models = [m for m in backup_models if m != "deepseek/deepseek-chat"]
@@ -2531,9 +2738,9 @@ def _especialista_prompt_fallback(
     backup_models = [
         "google/gemini-2.5-flash",
         "deepseek/deepseek-chat",
+        "anthropic/claude-haiku-4.5",
         "google/gemini-2.5-pro",
-        "openai/gpt-4o",
-        "anthropic/claude-sonnet-4.6"
+        "openai/gpt-4o"
     ]
     last_error = None
     for model in backup_models:
@@ -2712,7 +2919,8 @@ def processar_conto_taoista(
     instrucoes: dict = None,
     wait_for_user_decision: Callable[[int, str], str] = None,
     check_status: Callable[[], None] = None,
-    artista_model: str = "codex/gpt-image-2"
+    artista_model: str = "codex/gpt-image-2",
+    on_folder_created: Callable[[str], None] = None
 ) -> List[str]:
     """
     Orquestra todo o pipeline de geração usando os agentes de IA.
@@ -2720,7 +2928,37 @@ def processar_conto_taoista(
     """
     keys = custom_keys or {}
     inst = instrucoes or {}
-    
+
+    # ------------------------------------------------------------------
+    # Log detalhado por conto — captura TODA a conversa dos agentes
+    # (incluindo falhas de fallback) e grava incrementalmente em arquivo.
+    # Antes da pasta do conto existir, as mensagens ficam num buffer e são
+    # descarregadas assim que o diretório é criado. Como a escrita é
+    # incremental, o log sobrevive a travamentos/erros no meio do pipeline.
+    # ------------------------------------------------------------------
+    _original_sse_send = sse_send
+    _log_state = {"path": None, "lock": threading.Lock(), "buffer": []}
+
+    def _logged_sse_send(message: str):
+        from datetime import datetime
+        line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        with _log_state["lock"]:
+            if _log_state["path"]:
+                try:
+                    with open(_log_state["path"], "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
+                except Exception:
+                    pass
+            else:
+                _log_state["buffer"].append(line)
+        try:
+            if _original_sse_send:
+                _original_sse_send(message)
+        except Exception:
+            pass
+
+    sse_send = _logged_sse_send
+
     # Extração de instruções estruturadas por agente e seus anexos de arquivos
     rot_cfg = inst.get("roteirista", {})
     rot_geral = rot_cfg.get("geral") or load_instruction_file("roteirista")
@@ -2802,7 +3040,22 @@ def processar_conto_taoista(
     tale_folder_name = f"{prefix}_{h}"
     tale_dir = os.path.join(output_dir, tale_folder_name)
     os.makedirs(tale_dir, exist_ok=True)
-    
+    if on_folder_created:
+        on_folder_created(tale_folder_name)
+
+    # Ativa o log em arquivo e descarrega o buffer acumulado até aqui
+    _log_state["path"] = os.path.join(tale_dir, "log_geracao.txt")
+    with _log_state["lock"]:
+        try:
+            from datetime import datetime
+            with open(_log_state["path"], "a", encoding="utf-8") as f:
+                f.write(f"\n===== INÍCIO DA GERAÇÃO — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+                for ln in _log_state["buffer"]:
+                    f.write(ln + "\n")
+            _log_state["buffer"] = []
+        except Exception:
+            pass
+
     # Subpastas dedicadas conforme novas diretrizes do usuário
     roteirista_dir = os.path.join(tale_dir, "roteirista")
     designer_dir = os.path.join(tale_dir, "designer")
@@ -2876,7 +3129,7 @@ def processar_conto_taoista(
                 sse_send("[Sistema] Cache do roteiro corrompido detectado. Recuperando...")
                 raw = roteiro["content"]
                 cleaned = clean_json_text(raw)
-                roteiro = json.loads(cleaned)
+                roteiro = parse_json_robust(cleaned)
                 with open(roteiro_path, "w", encoding="utf-8") as f:
                     json.dump(roteiro, f, ensure_ascii=False, indent=2)
             # Valida se o roteiro tem páginas — cache inválido deve ser descartado
@@ -2903,7 +3156,7 @@ def processar_conto_taoista(
         raw_roteiro = raw_roteiro_res["content"]
         reasoning = raw_roteiro_res.get("reasoning")
         cleaned = clean_json_text(raw_roteiro)
-        roteiro = json.loads(cleaned)
+        roteiro = parse_json_robust(cleaned)
         
         # Salva o roteiro na pasta do conto
         with open(roteiro_path, "w", encoding="utf-8") as f:
@@ -2919,9 +3172,21 @@ def processar_conto_taoista(
     titulo = roteiro.get("titulo", "Conto Taoista")
     paginas = roteiro.get("paginas", [])
     total_paginas = len(paginas)
-    
+
     sse_send(f"[Sistema] Roteiro pronto: '{titulo}' | Total de páginas: {total_paginas}")
-    
+
+    # Biblioteca global de personagens: personagens recorrentes mantêm a MESMA
+    # aparência entre contos (descritor + recorte canônico do rosto)
+    personagens_conto = {}
+    try:
+        from app.personagens import sincronizar_biblioteca
+        sse_send("[Sistema] Sincronizando personagens do conto com a biblioteca global...")
+        personagens_conto = sincronizar_biblioteca(g_client, roteiro, sse_send=sse_send)
+        if personagens_conto:
+            sse_send(f"[Sistema] {len(personagens_conto)} personagem(ns) deste conto na biblioteca: " + ", ".join(p["nome"] for p in personagens_conto.values()))
+    except Exception as e:
+        sse_send(f"[Sistema] Aviso: falha ao sincronizar biblioteca de personagens: {str(e)}")
+
     # 1.5. Análise do Conto e Roteiro pelo Especialista China (máximo 2 vezes se reprovado)
     if not roteiro_cacheado:
         tentativas_esp_roteiro = 0
@@ -3034,7 +3299,7 @@ def processar_conto_taoista(
                 )
                 raw_roteiro = roteiro_res["content"]
                 cleaned = clean_json_text(raw_roteiro)
-                roteiro = json.loads(cleaned)
+                roteiro = parse_json_robust(cleaned)
                 # Atualiza variáveis locais
                 titulo = roteiro.get("titulo", "Conto Taoista")
                 paginas = roteiro.get("paginas", [])
@@ -3288,8 +3553,35 @@ def processar_conto_taoista(
                     feedback_revisor=feedback_final_revisor,
                     feedback_especialista=feedback_especialista,
                     diretiva_lider=diretiva_lider_atual,
-                    estilo_fixo=estilo_pagina1 if i > 1 else None
+                    estilo_fixo=estilo_pagina1 if i > 1 else None,
+                    num_pagina=i,
+                    titulo=titulo
                 )
+                # Consistência de personagens: a partir da página 2, exige rostos idênticos à referência
+                if i > 1 and pagina1_aprovada:
+                    prompt_a_gerar += (
+                        " CHARACTER CONSISTENCY (CRITICAL): the attached reference image is page 1 of this SAME story. "
+                        "Every recurring character MUST have EXACTLY the same face, facial features, hairstyle, "
+                        "facial hair, body type and clothing as in the reference image. Do NOT redesign or "
+                        "reinterpret the characters — copy their appearance faithfully."
+                    )
+
+                # Biblioteca de personagens: descritores compactos + recortes de rosto
+                rostos_paths = []
+                personagens_pagina = {}
+                try:
+                    from app.personagens import personagens_na_pagina, descritores_para_prompt, rostos_de_referencia
+                    personagens_pagina = personagens_na_pagina(personagens_conto, pagina_script)
+                    descritores = descritores_para_prompt(personagens_pagina)
+                    if descritores:
+                        prompt_a_gerar += descritores
+                    rostos = rostos_de_referencia(personagens_pagina)
+                    if rostos:
+                        rostos_paths = [path for _, path in rostos]
+                        sse_send(f"[Orquestrador] Anexando rosto(s) de referência da biblioteca: {', '.join(n for n, _ in rostos)}")
+                except Exception as e:
+                    sse_send(f"[Sistema] Aviso: falha ao montar referências de personagens: {str(e)}")
+
                 sse_send(f"[Orquestrador] Prompt para o Artista ({len(prompt_a_gerar)} chars): {prompt_a_gerar[:120]}...")
 
                 # Consistência de revista: página 1 de TODO conto ancora no modelo canônico
@@ -3312,7 +3604,8 @@ def processar_conto_taoista(
                     sse_send=sse_send,
                     poe_key=poe_key,
                     modelos_paths=modelos_paths,
-                    ref_image=ref_img_artista
+                    ref_image=ref_img_artista,
+                    face_paths=rostos_paths
                 )
                 
                 if isinstance(img_data, str):
@@ -3367,6 +3660,20 @@ def processar_conto_taoista(
                     _salvar_imagem_rejeitada(imagem_final, tale_dir, i, f"rejeitada_focada_tentativa_{tentativa_revisao}", model_id=model_used)
                     sse_send(f"[Sistema] ✗ Página {i} REPROVADA na verificação focada: {_msg_v}")
                     continue
+
+                # GATE DE CONSISTÊNCIA DE PERSONAGENS: compara com a página 1 aprovada
+                if i > 1 and pagina1_aprovada:
+                    sse_send(f"[Sistema] Verificando consistência dos personagens da página {i} com a página 1...")
+                    _viol_pers = _verificacao_consistencia_personagens(g_client, imagem_final, pagina1_aprovada, i)
+                    if _viol_pers:
+                        revisao_aprovada = False
+                        _msg_p = " | ".join(_viol_pers)
+                        feedback_revisor = f"REPROVADO AUTOMATICAMENTE PELO SISTEMA: {_msg_p}"
+                        feedbacks_cumulativos.append(f"T{tentativa_revisao}: {_msg_p[:200]}")
+                        _salvar_imagem_rejeitada(imagem_final, tale_dir, i, f"rejeitada_personagens_tentativa_{tentativa_revisao}", model_id=model_used)
+                        sse_send(f"[Sistema] ✗ Página {i} REPROVADA por inconsistência de personagens: {_msg_p}")
+                        continue
+                    sse_send(f"[Sistema] ✓ Personagens da página {i} consistentes com a página 1.")
 
                 try:
                     filepath_temp = filepath.replace(".png", "_temp.png")
@@ -3576,6 +3883,15 @@ def processar_conto_taoista(
             except Exception as e:
                 sse_send(f"[Sistema] Erro ao salvar imagem da página {i}: {str(e)}")
 
+        # Recorta e salva na biblioteca os rostos dos personagens desta página
+        # que ainda não têm referência canônica (primeira aparição aprovada)
+        if imagem_final and personagens_pagina:
+            try:
+                from app.personagens import salvar_rostos_da_pagina
+                salvar_rostos_da_pagina(g_client, imagem_final, personagens_pagina, sse_send=sse_send)
+            except Exception as e:
+                sse_send(f"[Sistema] Aviso: falha ao recortar rostos para a biblioteca: {str(e)}")
+
         # Após página 1 aprovada: captura referência visual e estilo para consistência
         if i == 1 and imagem_final:
             pagina1_aprovada = imagem_final.copy()
@@ -3586,6 +3902,15 @@ def processar_conto_taoista(
             sse_send("[Orquestrador] Página 1 aprovada — usada como referência visual para todas as páginas seguintes.")
         elif not imagem_final and not os.path.exists(image_path_in_tale):
             sse_send(f"[Sistema] ERRO: Imagem final para página {i} não disponível.")
+            # Preserva o _temp.png (se existir) renomeando-o, para evidência
+            try:
+                filepath_temp = filepath.replace(".png", "_temp.png")
+                if os.path.exists(filepath_temp):
+                    nao_aprovada = filepath.replace(".png", "_nao_aprovada.png")
+                    os.rename(filepath_temp, nao_aprovada)
+                    sse_send(f"[Sistema] Imagem gerada mas não aprovada preservada em: {os.path.basename(nao_aprovada)}")
+            except Exception:
+                pass
             
         # 5. Artista reporta término
         if i < total_paginas:
@@ -3597,10 +3922,17 @@ def processar_conto_taoista(
 
         return filename if imagem_final or os.path.exists(image_path_in_tale) else None
 
+    # Rastreia quais números de página foram realmente gerados, para o resumo final
+    paginas_geradas = set()
+
     # Página 1 sempre sequencial (precisamos da referência visual/estilo antes das demais)
-    result_p1 = _processar_pagina(1, paginas[0])
-    if result_p1:
-        paginas_salvas.append(result_p1)
+    try:
+        result_p1 = _processar_pagina(1, paginas[0])
+        if result_p1:
+            paginas_salvas.append(result_p1)
+            paginas_geradas.add(1)
+    except Exception as e:
+        sse_send(f"[Sistema] ERRO ao gerar a página 1: {str(e)}")
 
     # Páginas 2+ em paralelo (até 3 simultâneas para não sobrecarregar a VM)
     if len(paginas) > 1:
@@ -3616,10 +3948,55 @@ def processar_conto_taoista(
                     result = future.result()
                     if result:
                         paginas_salvas.append(result)
+                        paginas_geradas.add(page_num)
+                    else:
+                        sse_send(f"[Sistema] ERRO: a página {page_num} NÃO foi gerada (nenhum modelo conseguiu produzir/aprovar a imagem). Veja as falhas dos agentes acima neste log.")
                 except Exception as e:
-                    sse_send(f"[Sistema] Erro na página {page_num}: {str(e)}")
+                    sse_send(f"[Sistema] ERRO na página {page_num}: {str(e)}")
 
-    sse_send(f"[Sistema] Finalizado! Todas as {total_paginas} páginas salvas no diretório com sucesso.")
+    # Resumo final explícito: quais páginas saíram e quais faltaram
+    faltando = [n for n in range(1, total_paginas + 1) if n not in paginas_geradas]
+    sse_send("[Sistema] ===== RESUMO DA GERAÇÃO =====")
+    sse_send(f"[Sistema] Páginas previstas: {total_paginas} | Geradas: {len(paginas_geradas)} | Faltando: {len(faltando)}")
+    sse_send(f"[Sistema] Páginas geradas com sucesso: {sorted(paginas_geradas) or 'nenhuma'}")
+    if faltando:
+        sse_send(f"[Sistema] ⚠ Páginas que FALHARAM: {faltando}. Procure por '[ERRO' e '[Artista' acima para o motivo de cada uma.")
+    else:
+        sse_send(f"[Sistema] Finalizado! Todas as {total_paginas} páginas salvas no diretório com sucesso.")
+
+    # Gera o fluxograma visual do pipeline usado para criar o conto
+    if paginas_salvas:
+        try:
+            sse_send("[Sistema] Gerando o fluxograma do processo de criação...")
+            from app.flowchart import gerar_fluxograma
+            fluxo_filename = f"{tale_folder_name}_fluxograma.png"
+            fluxo_path = os.path.join(output_dir, fluxo_filename)
+            resultado_fluxo = gerar_fluxograma(
+                titulo=titulo,
+                total_paginas=total_paginas,
+                artista_model=artista_model,
+                output_path=fluxo_path,
+                tale_dir=tale_dir,
+            )
+            if resultado_fluxo:
+                # Cópia também na pasta do conto, para o explorador de arquivos
+                try:
+                    import shutil
+                    shutil.copy(fluxo_path, os.path.join(tale_dir, "fluxograma.png"))
+                except Exception:
+                    pass
+                try:
+                    from app.drive_upload import upload_file_to_drive
+                    upload_file_to_drive(fluxo_path)
+                except Exception:
+                    pass
+                paginas_salvas.append(fluxo_filename)
+                sse_send(f"[Sistema] ✓ Fluxograma do conto gerado: {fluxo_filename}")
+            else:
+                sse_send("[Sistema] Aviso: não foi possível gerar o fluxograma.")
+        except Exception as e:
+            sse_send(f"[Sistema] Aviso: falha ao gerar o fluxograma: {str(e)}")
+
     return paginas_salvas
 
 

@@ -1,3 +1,15 @@
+// Sessão expirada/inválida em QUALQUER chamada à API → volta para o login
+// (antes aparecia "Erro no servidor" sem explicação)
+const _origFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+    const res = await _origFetch(...args);
+    if (res.status === 401 && !String(args[0]).includes("/api/login")) {
+        window.location.href = "/login";
+        throw new Error("Sessão expirada — redirecionando para o login.");
+    }
+    return res;
+};
+
 // Banco de contos taoístas pré-carregados para facilitar testes
 const SAMPLE_TALES = {
     borboleta: `Certa vez, Zhuangzi sonhou que era uma borboleta, voando alegremente de lá para cá, de flor em flor, sem saber que era Zhuangzi. 
@@ -212,9 +224,14 @@ async function refreshGallery() {
                     </div>
                     <div class="comic-info">
                         <span class="comic-title">${displayName}</span>
-                        <a href="/saved_comics/${imgName}?t=${timestamp}" download="${imgName}" class="btn-icon" title="Baixar imagem">
-                            <span class="material-icons-round">download</span>
-                        </a>
+                        <div class="comic-actions">
+                            <a href="/saved_comics/${imgName}?t=${timestamp}" download="${imgName}" class="btn-icon" title="Baixar imagem">
+                                <span class="material-icons-round">download</span>
+                            </a>
+                            <button class="btn-icon btn-delete" title="Excluir imagem" onclick="deleteComic('${imgName}', '${displayName}')">
+                                <span class="material-icons-round">delete</span>
+                            </button>
+                        </div>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -223,6 +240,445 @@ async function refreshGallery() {
     } catch (err) {
         console.error("Erro ao carregar a galeria:", err);
     }
+}
+
+// Exclui permanentemente uma imagem gerada
+async function deleteComic(imgName, displayName) {
+    if (!confirm(`Excluir "${displayName}"?\n\nEsta ação remove o arquivo permanentemente e não pode ser desfeita.`)) {
+        return;
+    }
+    try {
+        const res = await fetch(`/api/comics/${encodeURIComponent(imgName)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.error) {
+            alert("Erro ao excluir: " + data.error);
+            return;
+        }
+        await refreshGallery();
+    } catch (err) {
+        console.error("Erro ao excluir a imagem:", err);
+        alert("Erro ao excluir a imagem.");
+    }
+}
+
+// ----------------------------------------------------------------------
+// Explorador de Arquivos — navega pastas, pareceres e imagens do servidor
+// ----------------------------------------------------------------------
+let browserCurrentPath = "";
+
+function openFileBrowser() {
+    document.getElementById("browser-modal").style.display = "flex";
+    browseTo("");
+}
+
+function closeFileBrowser() {
+    document.getElementById("browser-modal").style.display = "none";
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+async function browseTo(path) {
+    browserCurrentPath = path;
+    const viewer = document.getElementById("browser-viewer");
+    viewer.style.display = "none";
+    viewer.innerHTML = "";
+    const listEl = document.getElementById("browser-list");
+    listEl.style.display = "block";
+    listEl.innerHTML = `<div class="browser-loading">Carregando...</div>`;
+
+    try {
+        const res = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
+        const data = await res.json();
+        renderBreadcrumb(data.path || "");
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-loading">Erro: ${data.error}</div>`;
+            return;
+        }
+        if (!data.entries || data.entries.length === 0) {
+            listEl.innerHTML = `<div class="browser-loading">Pasta vazia.</div>`;
+            return;
+        }
+        listEl.innerHTML = "";
+        data.entries.forEach(entry => {
+            const row = document.createElement("div");
+            row.className = "browser-row";
+            let icon, meta, onclick;
+            if (entry.type === "dir") {
+                icon = "folder";
+                meta = `${entry.count} ${entry.count === 1 ? "item" : "itens"}`;
+                onclick = `browseTo('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}')`;
+            } else if (entry.is_image) {
+                icon = "image";
+                meta = formatSize(entry.size);
+                onclick = `viewBrowserImage('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}')`;
+            } else if (entry.is_text) {
+                icon = "description";
+                meta = formatSize(entry.size);
+                onclick = `viewBrowserText('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}')`;
+            } else {
+                icon = "insert_drive_file";
+                meta = formatSize(entry.size);
+                onclick = "";
+            }
+            row.innerHTML = `
+                <div class="browser-row-main" onclick="${onclick}">
+                    <span class="material-icons-round browser-icon ${entry.type === 'dir' ? 'is-dir' : ''}">${icon}</span>
+                    <span class="browser-name">${entry.name}</span>
+                    <span class="browser-meta">${meta}</span>
+                </div>
+                <button class="btn-icon btn-delete" title="Excluir" onclick="deleteBrowserEntry('${entry.path.replace(/\\/g, "/").replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}', ${entry.type === 'dir'})">
+                    <span class="material-icons-round">delete</span>
+                </button>
+            `;
+            listEl.appendChild(row);
+        });
+    } catch (err) {
+        console.error("Erro ao navegar:", err);
+        listEl.innerHTML = `<div class="browser-loading">Erro ao carregar.</div>`;
+    }
+}
+
+function renderBreadcrumb(path) {
+    const bc = document.getElementById("browser-breadcrumb");
+    const parts = path ? path.split("/") : [];
+    let html = `<span class="crumb" onclick="browseTo('')">saved_comics</span>`;
+    let acc = "";
+    parts.forEach(part => {
+        acc = acc ? acc + "/" + part : part;
+        html += ` <span class="crumb-sep">/</span> <span class="crumb" onclick="browseTo('${acc.replace(/'/g, "\\'")}')">${part}</span>`;
+    });
+    bc.innerHTML = html;
+}
+
+async function viewBrowserText(path, name) {
+    const listEl = document.getElementById("browser-list");
+    const viewer = document.getElementById("browser-viewer");
+    listEl.style.display = "none";
+    viewer.style.display = "block";
+    viewer.innerHTML = `<div class="browser-loading">Carregando...</div>`;
+    try {
+        const res = await fetch(`/api/browse-file?path=${encodeURIComponent(path)}`);
+        const data = await res.json();
+        const content = data.error ? ("Erro: " + data.error) : data.content;
+        viewer.innerHTML = `
+            <div class="viewer-header">
+                <button class="btn-icon" onclick="browseTo(browserCurrentPath)" title="Voltar"><span class="material-icons-round">arrow_back</span></button>
+                <span class="viewer-title">${name}</span>
+            </div>
+            <pre class="viewer-text"></pre>
+        `;
+        viewer.querySelector(".viewer-text").textContent = content;
+    } catch (err) {
+        viewer.innerHTML = `<div class="browser-loading">Erro ao abrir o arquivo.</div>`;
+    }
+}
+
+function viewBrowserImage(path, name) {
+    const listEl = document.getElementById("browser-list");
+    const viewer = document.getElementById("browser-viewer");
+    listEl.style.display = "none";
+    viewer.style.display = "block";
+    viewer.innerHTML = `
+        <div class="viewer-header">
+            <button class="btn-icon" onclick="browseTo(browserCurrentPath)" title="Voltar"><span class="material-icons-round">arrow_back</span></button>
+            <span class="viewer-title">${name}</span>
+            <a href="/api/browse-raw?path=${encodeURIComponent(path)}" download="${name}" class="btn-icon" title="Baixar"><span class="material-icons-round">download</span></a>
+        </div>
+        <img class="viewer-image" src="/api/browse-raw?path=${encodeURIComponent(path)}&t=${Date.now()}" alt="${name}">
+    `;
+}
+
+async function deleteBrowserEntry(path, name, isDir) {
+    const tipo = isDir ? "a pasta" : "o arquivo";
+    const extra = isDir ? "\n\nTODO o conteúdo da pasta será removido." : "";
+    if (!confirm(`Excluir ${tipo} "${name}"?${extra}\n\nEsta ação é permanente e não pode ser desfeita.`)) {
+        return;
+    }
+    try {
+        const res = await fetch(`/api/browse?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.error) {
+            alert("Erro ao excluir: " + data.error);
+            return;
+        }
+        await browseTo(browserCurrentPath);
+        refreshGallery();
+    } catch (err) {
+        console.error("Erro ao excluir:", err);
+        alert("Erro ao excluir.");
+    }
+}
+
+// ----------------------------------------------------------------------
+// Fila de processamento em lote (vários .txt, um conto por vez)
+// ----------------------------------------------------------------------
+let batchPollTimer = null;
+let batchFollowingSession = null;
+
+async function enqueueBatchFiles(files) {
+    if (!files || files.length === 0) return;
+    const contos = [];
+    for (const f of files) {
+        const texto = await f.text();
+        if (texto.trim()) contos.push({ nome: f.name, texto });
+    }
+    document.getElementById("batch-files").value = "";
+    if (contos.length === 0) { showToast("Nenhum arquivo .txt com conteúdo válido.", "erro"); return; }
+
+    showToast(`Enviando ${contos.length} conto(s) para a fila...`, "info");
+    let payload;
+    try {
+        payload = Object.assign({ contos }, collectGenerationConfig());
+    } catch (err) {
+        console.error("Erro ao montar configuração:", err);
+        showToast("Erro ao montar configuração: " + err.message, "erro");
+        return;
+    }
+    try {
+        const res = await fetch("/api/generate-batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const txt = await res.text();
+            showToast(`Erro ${res.status}: ${txt}`, "erro");
+            return;
+        }
+        const data = await res.json();
+        if (data.error) { showToast("Erro: " + data.error, "erro"); return; }
+        showToast(`✓ ${data.enfileirados} conto(s) adicionado(s) à fila!`, "ok");
+        startBatchPolling();
+        openStatusModal();
+    } catch (err) {
+        console.error("Erro ao enfileirar contos:", err);
+        showToast("Erro ao enviar os contos: " + err.message, "erro");
+    }
+}
+
+function showToast(msg, type = "info") {
+    let container = document.getElementById("toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "toast-container";
+        container.style.cssText = "position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;";
+        document.body.appendChild(container);
+    }
+    const colors = { ok: "#2ecc71", erro: "#e74c3c", info: "var(--accent)" };
+    const icons = { ok: "check_circle", erro: "error", info: "info" };
+    const toast = document.createElement("div");
+    toast.style.cssText = `background:rgba(18,18,28,0.95);border:1px solid ${colors[type]}55;border-left:3px solid ${colors[type]};color:#fff;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;display:flex;align-items:center;gap:0.6rem;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,0.5);opacity:0;transition:opacity 0.3s;`;
+    toast.innerHTML = `<span class="material-icons-round" style="color:${colors[type]};font-size:1.1rem;">${icons[type]}</span>${msg}`;
+    container.appendChild(toast);
+    requestAnimationFrame(() => { toast.style.opacity = "1"; });
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 350);
+    }, 4000);
+}
+
+// Reúne a mesma configuração usada na geração individual (chaves, modelo, instruções)
+function collectGenerationConfig() {
+    const cfg = { instrucoes: getCurrentInstructions() };
+    const modelSel = document.getElementById("artista-model");
+    if (modelSel) cfg.artista_model = modelSel.value;
+    const keyIds = {
+        gemini_api_key: "gemini-key", openai_api_key: "openai-key",
+        openrouter_api_key: "openrouter-key", poe_api_key: "poe-key",
+        anthropic_api_key: "anthropic-key"
+    };
+    for (const [k, id] of Object.entries(keyIds)) {
+        const el = document.getElementById(id);
+        if (el && el.value.trim()) cfg[k] = el.value.trim();
+    }
+    return cfg;
+}
+
+function startBatchPolling() {
+    const panel = document.getElementById("batch-queue-panel");
+    if (panel) panel.style.display = "block";
+    if (batchPollTimer) return;
+    batchPollTimer = setInterval(refreshBatchQueue, 4000);
+    refreshBatchQueue();
+}
+
+async function refreshBatchQueue() {
+    try {
+        const res = await fetch("/api/queue");
+        const data = await res.json();
+        const list = document.getElementById("batch-queue-list");
+        const items = data.queue || [];
+        if (items.length === 0) {
+            list.innerHTML = `<div style="font-size:0.78rem;color:var(--text-secondary);text-align:center;padding:0.4rem;">Fila vazia.</div>`;
+            return;
+        }
+        const icons = { aguardando: "schedule", processando: "autorenew", concluido: "check_circle", erro: "error" };
+        list.innerHTML = "";
+        items.forEach(it => {
+            const row = document.createElement("div");
+            row.className = `batch-item batch-${it.status}`;
+            const canRemove = it.status !== "processando";
+            row.innerHTML = `
+                <span class="material-icons-round batch-icon ${it.status === 'processando' ? 'spinning' : ''}">${icons[it.status] || 'help'}</span>
+                <span class="batch-name" title="${it.erro || it.nome}">${it.nome}</span>
+                <span class="batch-status">${it.status}</span>
+                ${canRemove ? `<button class="btn-icon btn-delete" style="padding:0.15rem" onclick="removeBatchItem('${it.id}')"><span class="material-icons-round" style="font-size:1rem">close</span></button>` : ""}
+            `;
+            list.appendChild(row);
+        });
+
+        // Acompanha automaticamente no console o conto em processamento
+        const active = items.find(it => it.status === "processando" && it.session_id);
+        if (active && active.session_id !== batchFollowingSession) {
+            batchFollowingSession = active.session_id;
+            followSession(active.session_id, active.nome);
+        }
+
+        // Para o polling quando tudo terminou
+        if (items.every(it => it.status === "concluido" || it.status === "erro")) {
+            clearInterval(batchPollTimer);
+            batchPollTimer = null;
+            batchFollowingSession = null;
+            refreshGallery();
+        }
+    } catch (err) {
+        console.error("Erro ao consultar a fila:", err);
+    }
+}
+
+async function removeBatchItem(id) {
+    try {
+        await fetch(`/api/queue/${id}`, { method: "DELETE" });
+        refreshBatchQueue();
+        refreshStatusModal();
+    } catch (err) { console.error(err); }
+}
+
+let statusModalPollTimer = null;
+
+function openStatusModal() {
+    document.getElementById("status-modal").style.display = "flex";
+    refreshStatusModal();
+    if (!statusModalPollTimer) {
+        statusModalPollTimer = setInterval(refreshStatusModal, 4000);
+    }
+}
+
+function closeStatusModal(evt) {
+    if (evt && evt.target !== document.getElementById("status-modal") && !evt.target.classList.contains("close-modal")) return;
+    if (!evt) {
+        document.getElementById("status-modal").style.display = "none";
+    } else {
+        document.getElementById("status-modal").style.display = "none";
+    }
+    clearInterval(statusModalPollTimer);
+    statusModalPollTimer = null;
+}
+
+async function refreshStatusModal() {
+    try {
+        const res = await fetch("/api/queue");
+        const data = await res.json();
+        const items = data.queue || [];
+        const list = document.getElementById("status-modal-list");
+        const summary = document.getElementById("status-modal-summary");
+
+        const counts = { aguardando: 0, processando: 0, concluido: 0, erro: 0, interrompido: 0 };
+        items.forEach(it => { if (counts[it.status] !== undefined) counts[it.status]++; });
+
+        const chipColors = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c", interrompido: "#888" };
+        const chipLabels = { aguardando: "Aguardando", processando: "Processando", concluido: "Concluído", erro: "Erro", interrompido: "Interrompido" };
+        summary.innerHTML = Object.entries(counts).filter(([,v]) => v > 0).map(([k, v]) =>
+            `<span style="background:rgba(0,0,0,0.3); border:1px solid ${chipColors[k]}40; color:${chipColors[k]}; border-radius:20px; padding:0.25rem 0.75rem; font-size:0.8rem; font-weight:600;">${chipLabels[k]}: ${v}</span>`
+        ).join("") || "";
+
+        if (items.length === 0) {
+            list.innerHTML = `<div style="font-size:0.85rem; color:var(--text-secondary); text-align:center; padding:1.5rem;">Fila vazia. Suba arquivos .txt para iniciar o processamento.</div>`;
+            return;
+        }
+
+        const icons = { aguardando: "schedule", processando: "autorenew", concluido: "check_circle", erro: "error", interrompido: "warning" };
+        const colorMap = { aguardando: "#f39c12", processando: "var(--accent)", concluido: "#2ecc71", erro: "#e74c3c", interrompido: "#888" };
+        const labelMap = { aguardando: "Aguardando", processando: "Processando", concluido: "Concluído", erro: "Erro", interrompido: "Interrompido (restart)" };
+
+        list.innerHTML = "";
+        items.forEach((it, idx) => {
+            const card = document.createElement("div");
+            card.style.cssText = `background: rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.07); border-left: 3px solid ${colorMap[it.status] || '#888'}; border-radius:8px; padding:0.8rem 1rem; display:flex; align-items:center; gap:0.75rem;`;
+            const canRemove = it.status !== "processando";
+            const errMsg = it.erro ? `<div style="font-size:0.72rem; color:#e74c3c; margin-top:0.25rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.erro}">${it.erro.substring(0, 120)}</div>` : "";
+            const timestamps = [it.inicio ? `⏱ ${it.inicio}` : "", it.fim ? `→ ${it.fim}` : ""].filter(Boolean).join(" ");
+            const tsLine = timestamps ? `<div style="font-size:0.7rem; color:#777; margin-top:0.15rem;">${timestamps}</div>` : "";
+            const progresso = (it.paginas_feitas != null && it.paginas_total)
+                ? `<span style="font-size:0.7rem; color:#999; font-weight:600; margin-left:0.4rem;">${it.paginas_feitas}/${it.paginas_total} págs</span>`
+                : (it.paginas_feitas != null ? `<span style="font-size:0.7rem; color:#999; font-weight:600; margin-left:0.4rem;">${it.paginas_feitas} págs</span>` : "");
+            card.innerHTML = `
+                <span class="material-icons-round ${it.status === 'processando' ? 'spinning' : ''}" style="color:${colorMap[it.status] || '#888'}; font-size:1.4rem; flex-shrink:0;">${icons[it.status] || 'help'}</span>
+                <div style="flex:1; min-width:0;">
+                    <div style="font-size:0.88rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${it.nome}">${idx + 1}. ${it.nome}</div>
+                    <div style="font-size:0.75rem; color:${colorMap[it.status] || '#888'}; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;">${labelMap[it.status] || it.status}${progresso}</div>
+                    ${tsLine}
+                    ${errMsg}
+                </div>
+                ${it.session_id ? `<button class="btn-icon" style="padding:0.25rem;" title="Acompanhar no console" onclick="followSession('${it.session_id}','${it.nome}'); closeStatusModal();"><span class="material-icons-round" style="font-size:1rem;">open_in_new</span></button>` : ""}
+                ${canRemove ? `<button class="btn-icon btn-delete" style="padding:0.25rem;" title="Remover" onclick="removeBatchItem('${it.id}')"><span class="material-icons-round" style="font-size:1rem;">close</span></button>` : ""}
+            `;
+            list.appendChild(card);
+        });
+
+        // Update header button badge
+        const activeCount = counts.aguardando + counts.processando;
+        const btn = document.getElementById("btn-status-header");
+        if (btn) btn.title = activeCount > 0 ? `Status da Fila (${activeCount} pendentes)` : "Status da Fila";
+    } catch (err) {
+        console.error("Erro ao consultar fila:", err);
+    }
+}
+
+async function clearCompletedItems() {
+    try {
+        const res = await fetch("/api/queue");
+        const data = await res.json();
+        const completed = (data.queue || []).filter(it => it.status === "concluido" || it.status === "erro");
+        await Promise.all(completed.map(it => fetch(`/api/queue/${it.id}`, { method: "DELETE" })));
+        await refreshStatusModal();
+        await refreshBatchQueue();
+    } catch (err) { console.error(err); }
+}
+
+// Acompanha no console as mensagens de uma sessão da fila (sem iniciar geração nova)
+async function followSession(sessionId, nome) {
+    window.activeSessionId = sessionId;
+    window.activePolling = true;
+    addAgentBubble("Sistema", `Acompanhando o conto da fila: ${nome || sessionId}`, "sistema");
+
+    let since = 0;
+    let finished = false;
+    while (!finished && window.activeSessionId === sessionId) {
+        await new Promise(r => setTimeout(r, 2000));
+        let pollData;
+        try {
+            const res = await fetch(`/api/session/${sessionId}/messages?since=${since}`);
+            pollData = await res.json();
+        } catch (e) { continue; }
+        const msgs = pollData.messages || [];
+        for (const msg of msgs) {
+            processAgentMessage(msg);
+            if (msg === "[FIM]" || msg.startsWith("[ERRO]")) finished = true;
+        }
+        since += msgs.length;
+        if (pollData.done) finished = true;
+    }
+    refreshGallery();
+}
+
+async function doLogout() {
+    await fetch("/api/logout", { method: "POST" });
+    window.location.href = "/login";
 }
 
 function getCurrentInstructions() {

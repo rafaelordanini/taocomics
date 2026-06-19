@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     <!-- Icones Material Design -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
     <div class="app-container">
@@ -22,6 +22,14 @@
                 <h1>TaoComics <span class="accent-text">AI</span></h1>
             </div>
             <p class="subtitle">Conversão Multiagente de Contos Taoístas em Quadrinhos Nanquim</p>
+            <div style="position:absolute; top:1rem; right:1.2rem; display:flex; gap:0.5rem; align-items:center;">
+                <button class="btn-icon" onclick="openStatusModal()" title="Status da Fila" id="btn-status-header">
+                    <span class="material-icons-round">list_alt</span>
+                </button>
+                <button class="btn-icon" onclick="doLogout()" title="Sair">
+                    <span class="material-icons-round">logout</span>
+                </button>
+            </div>
         </header>
 
         <div class="app-layout">
@@ -168,10 +176,22 @@
                     </select>
                 </div>
 
+                <div class="panel-section">
+                    <h3><span class="material-icons-round">upload_file</span> Lote de Contos (.txt)</h3>
+                    <input type="file" id="batch-files" accept=".txt" multiple style="display:none" onchange="enqueueBatchFiles(this.files)">
+                    <button class="btn-secondary" style="width:100%" onclick="document.getElementById('batch-files').click()">
+                        <span class="material-icons-round">queue</span>
+                        <span>Subir contos para a fila</span>
+                    </button>
+                    <div id="batch-queue-panel" class="batch-queue-panel" style="display:none;">
+                        <div class="batch-queue-list" id="batch-queue-list"></div>
+                    </div>
+                </div>
+
                 <div class="panel-section fill-height">
                     <h3><span class="material-icons-round">history_edu</span> Conto Taoísta</h3>
                     <textarea id="tale-input" placeholder="Escreva ou cole aqui a história taoísta tradicional que você quer converter em quadrinhos..."></textarea>
-                    
+
                     <button id="btn-generate" onclick="startGeneration()">
                         <span class="material-icons-round">auto_awesome</span>
                         <span>Gerar Quadrinhos</span>
@@ -226,6 +246,7 @@
             <section class="output-gallery glass-card">
                 <div class="gallery-header">
                     <h2><span class="material-icons-round">collections</span> Páginas Geradas</h2>
+                    <button id="btn-browse" class="btn-icon" onclick="openFileBrowser()" title="Explorar Arquivos"><span class="material-icons-round">folder_open</span></button>
                     <button id="btn-refresh" class="btn-icon" onclick="refreshGallery()" title="Atualizar Galeria"><span class="material-icons-round">refresh</span></button>
                     <button id="btn-clear" class="btn-icon" onclick="clearGallery()" title="Limpar Galeria"><span class="material-icons-round">delete_sweep</span></button>
                 </div>
@@ -253,6 +274,19 @@
                     Editar Página
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal Explorador de Arquivos -->
+    <div id="browser-modal" class="modal" onclick="closeFileBrowser(event)">
+        <div class="modal-card glass-card animate-zoom" style="max-width: 760px; width: 92%; padding: 1.6rem; max-height: 86vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+            <span class="close-modal" onclick="closeFileBrowser()">&times;</span>
+            <h3 style="font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 8px; margin-bottom: 0.6rem;">
+                <span class="material-icons-round">folder_open</span> Explorador de Arquivos
+            </h3>
+            <div id="browser-breadcrumb" class="browser-breadcrumb"></div>
+            <div id="browser-list" class="browser-list"></div>
+            <div id="browser-viewer" class="browser-viewer" style="display:none;"></div>
         </div>
     </div>
 
@@ -337,6 +371,29 @@
                 <button id="btn-retry-no-directive" onclick="sendDecision('retry_no_directive')" class="btn-modal btn-cancel" style="width: 100%; border: 1px solid rgba(255,255,255,0.2);">
                     <span class="material-icons-round">replay</span>
                     Tentar Mais 5 Vezes (IAs)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Status da Fila -->
+    <div id="status-modal" class="modal" onclick="closeStatusModal(event)">
+        <div class="modal-card glass-card animate-zoom" style="max-width: 680px; width: 92%; padding: 1.8rem; max-height: 82vh; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+            <span class="close-modal" onclick="closeStatusModal()">&times;</span>
+            <h3 style="font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 8px; margin-bottom: 1.2rem;">
+                <span class="material-icons-round" style="color: var(--accent);">list_alt</span>
+                Status da Fila de Processamento
+            </h3>
+            <div id="status-modal-summary" style="display:flex; gap:1rem; margin-bottom:1rem; flex-wrap:wrap;"></div>
+            <div id="status-modal-list" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:0.6rem;">
+                <div style="font-size:0.85rem; color:var(--text-secondary); text-align:center; padding:1rem;">Fila vazia.</div>
+            </div>
+            <div style="display:flex; gap:0.8rem; margin-top:1.2rem; flex-wrap:wrap;">
+                <button class="btn-secondary" onclick="refreshStatusModal()" style="flex:1; min-width:140px;">
+                    <span class="material-icons-round">refresh</span> Atualizar
+                </button>
+                <button class="btn-secondary" onclick="clearCompletedItems()" style="flex:1; min-width:160px; border-color:rgba(231,76,60,0.4); color:#f88;">
+                    <span class="material-icons-round">delete_sweep</span> Limpar Concluídos
                 </button>
             </div>
         </div>

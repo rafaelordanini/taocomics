@@ -1,10 +1,12 @@
 import os
 import queue
+import shutil
+import secrets
 import threading
 import logging
 from pydantic import BaseModel
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, Request, Query
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execute_page_edit
@@ -12,6 +14,140 @@ from app.agents import processar_conto_taoista, find_tale_dir_by_filename, execu
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Taoist Comic Generator")
+
+# --------------------------------------------------------------------------
+# Autenticação — login simples com cookie de sessão
+# --------------------------------------------------------------------------
+AUTH_USER = os.environ.get("APP_USERNAME", "rafaelordanini")
+AUTH_PASS = os.environ.get("APP_PASSWORD", "Rafa1135m!")
+
+# Tokens assinados com HMAC (estáveis entre restarts do container — antes os
+# tokens ficavam em memória e toda sessão morria num --force-recreate)
+import hashlib
+import hmac as _hmac
+import time as _time
+
+_AUTH_SECRET = hashlib.sha256(f"taocomics::{AUTH_USER}::{AUTH_PASS}".encode()).digest()
+
+
+def _make_token() -> str:
+    exp = str(int(_time.time()) + 60 * 60 * 24 * 30)  # 30 dias
+    sig = _hmac.new(_AUTH_SECRET, exp.encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def _token_valido(token: str) -> bool:
+    try:
+        exp, sig = token.split(".", 1)
+        if int(exp) < _time.time():
+            return False
+        esperado = _hmac.new(_AUTH_SECRET, exp.encode(), hashlib.sha256).hexdigest()
+        return _hmac.compare_digest(sig, esperado)
+    except Exception:
+        return False
+
+# Rotas liberadas sem login (a página de login e o healthcheck)
+_PUBLIC_PATHS = {"/login", "/api/login", "/health"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    token = request.cookies.get("tao_session", "")
+    if not _token_valido(token):
+        # APIs recebem 401 JSON; navegação recebe redirect para /login
+        if path.startswith("/api/") or path.startswith("/saved_comics/"):
+            return JSONResponse({"error": "Não autenticado."}, status_code=401)
+        return RedirectResponse(url="/login", status_code=302)
+
+    return await call_next(request)
+
+
+_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaoComics — Login</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:linear-gradient(160deg,#181525,#0f0d1a); font-family:'Segoe UI',sans-serif; }
+  .card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1);
+          border-radius:16px; padding:2.5rem; width:320px; text-align:center;
+          box-shadow:0 8px 40px rgba(0,0,0,0.5); }
+  h1 { color:#d4af37; font-size:1.5rem; margin:0 0 0.3rem; }
+  p  { color:#aaa; font-size:0.85rem; margin:0 0 1.5rem; }
+  input { width:100%; box-sizing:border-box; padding:0.7rem 0.9rem; margin-bottom:0.8rem;
+          background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15);
+          border-radius:8px; color:#eee; font-size:0.95rem; outline:none; }
+  input:focus { border-color:#d4af37; }
+  button { width:100%; padding:0.75rem; background:#d4af37; color:#181525; border:none;
+           border-radius:8px; font-size:1rem; font-weight:700; cursor:pointer; }
+  button:hover { filter:brightness(1.1); }
+  .err { color:#ff6b6b; font-size:0.85rem; min-height:1.2em; margin-top:0.7rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>☯ TaoComics</h1>
+    <p>Gerador de HQs Taoístas</p>
+    <form onsubmit="doLogin(event)">
+      <input type="text" id="user" placeholder="Usuário" autocomplete="username" required>
+      <input type="password" id="pass" placeholder="Senha" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+<script>
+async function doLogin(e) {
+  e.preventDefault();
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({username: document.getElementById("user").value,
+                          password: document.getElementById("pass").value})
+  });
+  const data = await res.json();
+  if (data.status === "success") { window.location.href = "/"; }
+  else { document.getElementById("err").textContent = data.error || "Falha no login."; }
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/login")
+async def login_page():
+    return HTMLResponse(_LOGIN_HTML)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/login")
+async def do_login(req: LoginRequest):
+    if secrets.compare_digest(req.username, AUTH_USER) and secrets.compare_digest(req.password, AUTH_PASS):
+        token = _make_token()
+        resp = JSONResponse({"status": "success"})
+        resp.set_cookie(
+            "tao_session", token,
+            httponly=True, samesite="lax",
+            max_age=60 * 60 * 24 * 30,  # 30 dias
+        )
+        return resp
+    return JSONResponse({"error": "Usuário ou senha incorretos."}, status_code=401)
+
+
+@app.post("/api/logout")
+async def do_logout(request: Request):
+    resp = JSONResponse({"status": "success"})
+    resp.delete_cookie("tao_session")
+    return resp
 
 # Configuração de CORS para permitir desenvolvimento local
 app.add_middleware(
@@ -219,17 +355,15 @@ async def get_llm_balances(req: BalanceRequest):
     }
 
 
-@app.post("/api/generate")
-async def generate_comic(request: Request):
-    body = await request.json()
-    conto = body.get("conto")
-    ref_image_b64 = body.get("ref_image")
+def _create_generation_session(conto: str, body: dict, on_folder_created=None):
+    """Cria uma sessão de geração (estado + mensagens) e devolve (session_id, run_fn).
+    run_fn executa o pipeline de forma SÍNCRONA — quem chama decide a thread."""
     instrucoes = body.get("instrucoes")
-    artista_model = body.get("artista_model", "codex/gpt-image-2")
     if not isinstance(instrucoes, dict):
         instrucoes = {}
-    
-    # Captura chaves enviadas pela interface (opcional) ou usa do .env
+    artista_model = body.get("artista_model", "codex/gpt-image-2")
+    ref_image_b64 = body.get("ref_image")
+
     custom_keys = {
         "gemini_api_key": body.get("gemini_api_key"),
         "openai_api_key": body.get("openai_api_key"),
@@ -237,11 +371,7 @@ async def generate_comic(request: Request):
         "poe_api_key": body.get("poe_api_key"),
         "anthropic_api_key": body.get("anthropic_api_key") or body.get("claude_api_key"),
     }
-    
-    if not conto:
-        return {"error": "O texto do conto é obrigatório."}
-        
-    # Converte imagem base64 se presente
+
     ref_image = None
     if ref_image_b64:
         import base64
@@ -250,8 +380,7 @@ async def generate_comic(request: Request):
         try:
             image_bytes = base64.b64decode(ref_image_b64)
             ref_image = Image.open(io.BytesIO(image_bytes))
-        except Exception as e:
-            # Continua sem imagem de referência caso dê erro
+        except Exception:
             pass
 
     import uuid
@@ -260,8 +389,6 @@ async def generate_comic(request: Request):
     state.pause_event.set()
     active_sessions[session_id] = state
 
-    event_queue = queue.Queue()
-    # Lista acumulada de todas as mensagens da sessão (para polling)
     state.messages = []
     state.messages_lock = threading.Lock()
     state.done = False
@@ -270,7 +397,6 @@ async def generate_comic(request: Request):
         from datetime import datetime
         timestamp = datetime.now().strftime("%d/%m %H:%M:%S")
         stamped = f"[{timestamp}] {message}"
-        event_queue.put(stamped)
         with state.messages_lock:
             state.messages.append(stamped)
 
@@ -283,7 +409,6 @@ async def generate_comic(request: Request):
             state.pause_event.wait()
             if state.cancelled:
                 raise RuntimeError("Geração cancelada pelo usuário.")
-            # Se houver novas instruções enviadas no resume, mescla-as no dicionário local
             if hasattr(state, "updated_instructions") and state.updated_instructions:
                 sse_send("[Sistema] Mesclando novas diretivas e instruções enviadas pelo usuário...")
                 for agent, values in state.updated_instructions.items():
@@ -298,17 +423,14 @@ async def generate_comic(request: Request):
     def wait_for_user_decision(page_num: int, filename: str = None) -> tuple[str, str]:
         if state.cancelled:
             raise RuntimeError("Geração cancelada pelo usuário.")
-        
         temp_img = filename.replace(".png", "_temp.png") if filename else ""
         sse_send(f"[PAUSA] {page_num}|{temp_img}")
-        
         state.resume_event.clear()
         state.resume_event.wait()
         if state.cancelled:
             raise RuntimeError("Geração cancelada pelo usuário.")
         return state.user_decision, state.user_directive
 
-    # Executa a geração em uma thread secundária para não bloquear o servidor
     def run_pipeline():
         try:
             processar_conto_taoista(
@@ -320,7 +442,8 @@ async def generate_comic(request: Request):
                 instrucoes=instrucoes,
                 wait_for_user_decision=wait_for_user_decision,
                 check_status=check_status,
-                artista_model=artista_model
+                artista_model=artista_model,
+                on_folder_created=on_folder_created
             )
             sse_send("[FIM]")
         except Exception as e:
@@ -328,16 +451,496 @@ async def generate_comic(request: Request):
             sse_send("[FIM]")
         finally:
             state.done = True
-            # Remove a sessão da memória após 5 minutos para liberar recursos
             def _cleanup():
                 import time
                 time.sleep(300)
                 active_sessions.pop(session_id, None)
             threading.Thread(target=_cleanup, daemon=True).start()
 
-    threading.Thread(target=run_pipeline, daemon=True).start()
+    return session_id, run_pipeline
 
+
+@app.post("/api/generate")
+async def generate_comic(request: Request):
+    body = await request.json()
+    conto = body.get("conto")
+    if not conto:
+        return {"error": "O texto do conto é obrigatório."}
+
+    session_id, run_pipeline = _create_generation_session(conto, body)
+    threading.Thread(target=run_pipeline, daemon=True).start()
     return {"session_id": session_id}
+
+
+# --------------------------------------------------------------------------
+# Fila de processamento em lote — vários contos (.txt), um por vez.
+# Persistida em disco para sobreviver a restarts do container.
+# --------------------------------------------------------------------------
+batch_queue: list = []          # itens: {id, nome, status, session_id, erro, inicio, fim}
+_batch_lock = threading.Lock()
+_batch_worker_running = False
+
+
+def _queue_path() -> str:
+    from app.agents import _get_saved_comics_dir
+    return os.path.join(_get_saved_comics_dir(), "fila.json")
+
+
+def _queue_save():
+    """Salva a fila em disco (chamado dentro de _batch_lock)."""
+    try:
+        # Não salva o texto do conto nem a config (grandes demais e sensíveis)
+        items = [{k: v for k, v in it.items() if k not in ("conto", "config")} for it in batch_queue]
+        with open(_queue_path(), "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning(f"[queue] Falha ao salvar fila em disco: {e}")
+
+
+def _queue_load():
+    """Carrega fila do disco no startup. Itens 'processando' voltam a 'interrompido'."""
+    global batch_queue
+    try:
+        with open(_queue_path(), "r", encoding="utf-8") as f:
+            items = json.load(f)
+        for it in items:
+            # Itens que estavam processando quando o container caiu ficam marcados
+            if it.get("status") == "processando":
+                it["status"] = "interrompido"
+                it["erro"] = "Container reiniciado durante o processamento."
+            # Garante campos obrigatórios
+            it.setdefault("session_id", None)
+            it.setdefault("erro", None)
+            it.setdefault("inicio", None)
+            it.setdefault("fim", None)
+            it.setdefault("conto", "")    # texto não foi salvo
+            it.setdefault("config", {})   # config não foi salva
+        batch_queue = items
+        logging.info(f"[queue] Fila carregada do disco: {len(items)} item(s).")
+    except FileNotFoundError:
+        batch_queue = []
+    except Exception as e:
+        logging.warning(f"[queue] Falha ao carregar fila do disco: {e}")
+        batch_queue = []
+
+
+def _dismissed_path() -> str:
+    from app.agents import _get_saved_comics_dir
+    return os.path.join(_get_saved_comics_dir(), "fila_dispensados.json")
+
+
+def _dismissed_load() -> set:
+    try:
+        with open(_dismissed_path(), "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
+def _dismissed_add(tale_folder: str):
+    if not tale_folder:
+        return
+    try:
+        d = _dismissed_load()
+        d.add(tale_folder)
+        with open(_dismissed_path(), "w", encoding="utf-8") as f:
+            json.dump(sorted(d), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning(f"[queue] Falha ao salvar dispensados: {e}")
+
+
+def _reconcile_locked():
+    """Sincroniza a fila com os contos já gerados em disco (chamado com _batch_lock).
+
+    Cobre contos produzidos antes da fila persistente, inclusive os que pararam
+    no meio. Cada pasta de conto com roteiro.json vira/atualiza um item 'disco:'.
+    """
+    global batch_queue
+    import re
+    from datetime import datetime
+    try:
+        from app.agents import _get_saved_comics_dir
+        base = _get_saved_comics_dir()
+    except Exception:
+        return
+    if not os.path.isdir(base):
+        return
+
+    def _safe_title(t):
+        return "".join([c if c.isalnum() else "_" for c in (t or "")]).strip("_")
+
+    dispensados = _dismissed_load()
+    # entradas reconstruídas, indexadas por uma chave estável
+    entradas = {}  # chave -> dict
+
+    try:
+        nomes = os.listdir(base)
+    except Exception:
+        return
+
+    # --- Passo A: páginas finais soltas na raiz (espelha a galeria) ---
+    # Arquivos no formato "{safe_title}_pagina_{N}.png"
+    pag_re = re.compile(r"^(.*)_pagina_(\d+)\.png$", re.IGNORECASE)
+    for f in nomes:
+        if not f.lower().endswith(".png"):
+            continue
+        if f.endswith("_temp.png") or f.endswith("_nao_aprovada.png"):
+            continue
+        fp = os.path.join(base, f)
+        if not os.path.isfile(fp):
+            continue
+        m = pag_re.match(f)
+        if not m:
+            continue
+        chave = m.group(1)
+        num = int(m.group(2))
+        e = entradas.setdefault(chave, {
+            "nome": chave.replace("_", " ").strip(),
+            "feitas": set(), "total": None, "tale_folder": None,
+            "mtimes": [],
+        })
+        e["feitas"].add(num)
+        try:
+            e["mtimes"].append(os.path.getmtime(fp))
+        except Exception:
+            pass
+
+    # --- Passo B: subpastas de conto (enriquecem título e total via roteiro) ---
+    for nome_pasta in sorted(nomes):
+        pasta = os.path.join(base, nome_pasta)
+        if not os.path.isdir(pasta) or nome_pasta in ("personagens",):
+            continue
+
+        roteiro_path = os.path.join(pasta, "roteirista", "roteiro.json")
+        if not os.path.exists(roteiro_path):
+            roteiro_path = os.path.join(pasta, "roteiro.json")
+        has_roteiro = os.path.exists(roteiro_path)
+
+        sub_feitas = set()
+        for d in (os.path.join(pasta, "artista", "aprovadas"), pasta):
+            if os.path.isdir(d):
+                for f in os.listdir(d):
+                    if f.startswith("pagina_") and f.endswith(".png"):
+                        num = f[len("pagina_"):-len(".png")].split("_")[0]
+                        if num.isdigit():
+                            sub_feitas.add(int(num))
+
+        n_feitas = len(sub_feitas)
+        titulo = nome_pasta
+        total = None
+
+        if has_roteiro:
+            try:
+                from app.agents import parse_json_robust
+                with open(roteiro_path, "r", encoding="utf-8") as f:
+                    raw_content = f.read()
+                rot = parse_json_robust(raw_content)
+                if isinstance(rot, dict):
+                    titulo = rot.get("titulo") or rot.get("title") or nome_pasta
+                    paginas = rot.get("paginas") or rot.get("pages") or rot.get("quadrinhos") or []
+                    total = len(paginas) if paginas else rot.get("total_paginas")
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to parse roteiro for {nome_pasta}: {e}")
+
+        # Ensure total is at least n_feitas if we know n_feitas but couldn't parse total
+        if total is None and n_feitas > 0:
+            total = max(n_feitas, 1) # fallback so it doesn't stay None and break UI
+
+        if not has_roteiro and not sub_feitas:
+            continue
+
+        # Casa esta pasta com uma entrada do passo A pelo safe_title do título
+        chave = _safe_title(titulo)
+        e = entradas.get(chave)
+        if e is None:
+            # tenta casar pelo próprio nome da pasta
+            e = entradas.get(nome_pasta)
+        if e is None:
+            e = entradas.setdefault(chave or nome_pasta, {
+                "nome": titulo, "feitas": set(), "total": None,
+                "tale_folder": None, "mtimes": [],
+            })
+        e["nome"] = titulo
+        e["total"] = total
+        e["tale_folder"] = nome_pasta
+        e["feitas"] |= sub_feitas
+        try:
+            log_path = os.path.join(pasta, "log_geracao.txt")
+            ref = log_path if os.path.exists(log_path) else (roteiro_path if has_roteiro else pasta)
+            e["ctime"] = os.path.getctime(ref)
+            e["mtimes"].append(os.path.getmtime(ref))
+        except Exception:
+            pass
+
+    # --- Monta/atualiza os itens da fila ---
+    por_pasta = {it.get("tale_folder"): it for it in batch_queue if it.get("tale_folder")}
+    por_chave = {it.get("disco_key"): it for it in batch_queue if it.get("disco_key")}
+    por_nome = {it.get("nome"): it for it in batch_queue if it.get("nome")}
+    mudou = False
+
+    for chave, e in entradas.items():
+        ident = e.get("tale_folder") or chave
+        if ident in dispensados or chave in dispensados:
+            continue
+
+        n_feitas = len(e["feitas"])
+        total = e.get("total")
+        if total and n_feitas >= total:
+            status = "concluido"
+        elif total:
+            status = "interrompido"
+        else:
+            # Sem roteiro: as páginas na raiz são finais aprovadas → consideramos pronto
+            status = "concluido"
+
+        inicio = fim = None
+        try:
+            ct = e.get("ctime")
+            if ct is None and e["mtimes"]:
+                ct = min(e["mtimes"])
+            if ct is not None:
+                inicio = datetime.fromtimestamp(ct).strftime("%d/%m/%Y %H:%M")
+            if e["mtimes"]:
+                fim = datetime.fromtimestamp(max(e["mtimes"])).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            pass
+
+        erro = None
+        if status == "interrompido":
+            erro = f"Geração incompleta — {n_feitas}/{total} página(s) concluída(s)."
+
+        existente = por_pasta.get(e.get("tale_folder")) or por_chave.get(chave) or por_nome.get(e["nome"])
+        
+        # Fuzzy match for old API jobs where the name might have a prefix like "1. "
+        if existente is None:
+            for it in batch_queue:
+                if it.get("origem") == "disco":
+                    continue
+                api_name = it.get("nome", "").lower()
+                disk_name = e["nome"].lower()
+                # Check if one contains the other, e.g. "1. aquilo que..." contains "aquilo que..."
+                if (disk_name in api_name and len(disk_name) > 5) or (api_name in disk_name and len(api_name) > 5):
+                    existente = it
+                    break
+
+        if existente is not None:
+            for campo, valor in [("paginas_feitas", n_feitas), ("paginas_total", total), ("tale_folder", e.get("tale_folder"))]:
+                if existente.get(campo) != valor:
+                    existente[campo] = valor
+                    mudou = True
+            
+            # Retroactive fix: if an API job was marked as concluido but it's not actually finished, fix it
+            if existente.get("status") == "concluido" and total and n_feitas < total:
+                existente["status"] = "interrompido"
+                existente["erro"] = f"Geração incompleta — {n_feitas}/{total} página(s) aprovada(s)."
+                mudou = True
+
+            if existente.get("origem") == "disco":
+                for campo, valor in (
+                    ("nome", e["nome"]), ("status", status), ("erro", erro),
+                    ("inicio", inicio), ("fim", fim),
+                ):
+                    if existente.get(campo) != valor:
+                        existente[campo] = valor
+                        mudou = True
+            continue
+
+        batch_queue.append({
+            "id": f"disco:{ident}",
+            "disco_key": chave,
+            "nome": e["nome"],
+            "tale_folder": e.get("tale_folder"),
+            "status": status,
+            "session_id": None,
+            "erro": erro,
+            "inicio": inicio,
+            "fim": fim,
+            "paginas_feitas": n_feitas,
+            "paginas_total": total,
+            "origem": "disco",
+            "conto": "",
+            "config": {},
+        })
+        mudou = True
+
+    if mudou:
+        _queue_save()
+
+
+# Carrega a fila persistida ao iniciar o servidor
+_queue_load()
+try:
+    with _batch_lock:
+        _reconcile_locked()
+except Exception as _e:
+    logging.warning(f"[queue] Falha na reconciliação inicial: {_e}")
+
+
+def _batch_worker():
+    """Processa a fila sequencialmente — um conto por vez."""
+    global _batch_worker_running
+    from datetime import datetime
+    while True:
+        item = None
+        with _batch_lock:
+            for it in batch_queue:
+                if it["status"] == "aguardando":
+                    item = it
+                    break
+            if item is None:
+                _batch_worker_running = False
+                _queue_save()
+                return
+            item["status"] = "processando"
+            item["inicio"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _queue_save()
+
+        try:
+            def set_folder(folder_name: str):
+                with _batch_lock:
+                    item["tale_folder"] = folder_name
+                    _queue_save()
+            
+            session_id, run_pipeline = _create_generation_session(item["conto"], item["config"], on_folder_created=set_folder)
+            with _batch_lock:
+                item["session_id"] = session_id
+                _queue_save()
+            run_pipeline()  # SÍNCRONO — segura a fila até o conto terminar
+            state = active_sessions.get(session_id)
+            erro = None
+            if state:
+                with state.messages_lock:
+                    for m in reversed(state.messages):
+                        if "[ERRO]" in m:
+                            erro = m
+                            break
+            with _batch_lock:
+                _reconcile_locked()
+                pf = item.get("paginas_feitas", 0)
+                pt = item.get("paginas_total")
+                if erro:
+                    item["status"] = "erro"
+                    item["erro"] = erro
+                elif pt and pf < pt:
+                    item["status"] = "interrompido"
+                    item["erro"] = f"Geração incompleta — {pf}/{pt} página(s) aprovada(s)."
+                else:
+                    item["status"] = "concluido"
+                    item["erro"] = None
+                item["fim"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                _queue_save()
+        except Exception as e:
+            with _batch_lock:
+                item["status"] = "erro"
+                item["erro"] = str(e)
+                item["fim"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                _queue_save()
+
+
+@app.post("/api/generate-batch")
+async def generate_batch(request: Request):
+    """Recebe vários contos e os enfileira. Formato:
+    {"contos": [{"nome": "arquivo.txt", "texto": "..."}], ...demais configs do /api/generate}"""
+    global _batch_worker_running
+    body = await request.json()
+    contos = body.get("contos") or []
+    if not contos:
+        return {"error": "Nenhum conto enviado."}
+
+    config = {k: v for k, v in body.items() if k != "contos"}
+
+    import uuid
+    added = []
+    with _batch_lock:
+        for c in contos:
+            texto = (c.get("texto") or "").strip()
+            if not texto:
+                continue
+            item = {
+                "id": str(uuid.uuid4()),
+                "nome": c.get("nome") or f"conto_{len(batch_queue) + 1}",
+                "conto": texto,
+                "config": config,
+                "status": "aguardando",
+                "session_id": None,
+                "erro": None,
+                "inicio": None,
+                "fim": None,
+            }
+            batch_queue.append(item)
+            added.append(item["id"])
+
+        if added:
+            _queue_save()
+        if added and not _batch_worker_running:
+            _batch_worker_running = True
+            threading.Thread(target=_batch_worker, daemon=True).start()
+
+    return {"status": "success", "enfileirados": len(added), "ids": added}
+
+
+@app.get("/api/debug")
+def api_debug():
+    base = get_saved_comics_dir()
+    debug_info = {}
+    if os.path.isdir(base):
+        for f in os.listdir(base):
+            pasta = os.path.join(base, f)
+            if os.path.isdir(pasta) and f not in ("personagens",):
+                rpath = os.path.join(pasta, "roteiro.json")
+                if not os.path.exists(rpath):
+                    rpath = os.path.join(pasta, "roteirista", "roteiro.json")
+                exists = os.path.exists(rpath)
+                data = None
+                if exists:
+                    try:
+                        with open(rpath, "r", encoding="utf-8") as fp:
+                            rot = json.load(fp)
+                            pag = rot.get("paginas") or rot.get("pages") or []
+                            data = {"total_paginas": rot.get("total_paginas"), "len_paginas": len(pag)}
+                    except Exception as e:
+                        data = str(e)
+                aprovadas = os.path.join(pasta, "artista", "aprovadas")
+                feitas = 0
+                if os.path.exists(aprovadas):
+                    feitas = len([x for x in os.listdir(aprovadas) if x.endswith(".png")])
+                debug_info[f] = {"has_roteiro": exists, "roteiro_data": data, "feitas": feitas}
+    return {"debug": debug_info, "queue": batch_queue}
+
+@app.get("/api/queue")
+async def get_queue():
+    """Status da fila de processamento em lote (persiste entre restarts)."""
+    with _batch_lock:
+        try:
+            _reconcile_locked()
+        except Exception as e:
+            logging.warning(f"[queue] Falha na reconciliação: {e}")
+        items = [
+            {k: v for k, v in it.items() if k not in ("conto", "config")}
+            for it in batch_queue
+        ]
+    return {"queue": items}
+
+
+@app.delete("/api/queue/{item_id}")
+async def remove_queue_item(item_id: str):
+    """Remove um item da fila (só se ainda não começou ou já terminou)."""
+    with _batch_lock:
+        for it in batch_queue:
+            if it["id"] == item_id:
+                if it["status"] == "processando":
+                    return {"error": "Item em processamento — cancele pela sessão ativa."}
+                # Itens vindos do disco precisam ser lembrados como dispensados,
+                # senão a próxima reconciliação os re-adiciona.
+                if it.get("origem") == "disco":
+                    _dismissed_add(it.get("tale_folder") or it.get("disco_key"))
+                    if it.get("disco_key"):
+                        _dismissed_add(it["disco_key"])
+                batch_queue.remove(it)
+                _queue_save()
+                return {"status": "success"}
+    return {"error": "Item não encontrado."}
 
 
 @app.get("/api/session/{session_id}/messages")
@@ -385,6 +988,129 @@ async def list_comics():
         images = [f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         images.sort()
         return {"images": images}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.delete("/api/comics/{filename}")
+async def delete_comic(filename: str):
+    """Apaga uma imagem gerada do diretório saved_comics."""
+    # Bloqueia path traversal — só aceita o nome do arquivo, sem barras
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return {"error": "Nome de arquivo inválido."}
+    filepath = os.path.join(get_saved_comics_dir(), filename)
+    if not os.path.exists(filepath):
+        return {"error": "Arquivo não encontrado."}
+    try:
+        os.remove(filepath)
+        return {"status": "success", "deleted": filename}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# --------------------------------------------------------------------------
+# Explorador de arquivos — navega toda a árvore de saved_comics (pastas,
+# pareceres de texto, imagens) e permite excluir do servidor pelo navegador.
+# --------------------------------------------------------------------------
+
+def _safe_resolve(rel_path: str) -> str | None:
+    """Resolve um caminho relativo dentro de saved_comics, bloqueando path traversal.
+    Retorna o caminho absoluto ou None se for inválido/fora da base."""
+    base = os.path.abspath(get_saved_comics_dir())
+    rel_path = (rel_path or "").strip().lstrip("/")
+    target = os.path.abspath(os.path.join(base, rel_path))
+    # Garante que o alvo está estritamente dentro da base (ou é a própria base)
+    if target != base and not target.startswith(base + os.sep):
+        return None
+    return target
+
+
+@app.get("/api/browse")
+async def browse_files(path: str = Query("")):
+    """Lista pastas e arquivos em um nível da árvore de saved_comics."""
+    target = _safe_resolve(path)
+    if target is None or not os.path.isdir(target):
+        return {"error": "Caminho inválido ou inexistente.", "entries": []}
+
+    base = os.path.abspath(get_saved_comics_dir())
+    rel = os.path.relpath(target, base)
+    rel = "" if rel == "." else rel
+    parent = "" if rel == "" else os.path.dirname(rel)
+
+    image_exts = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+    text_exts = (".txt", ".json", ".md")
+    entries = []
+    try:
+        for name in sorted(os.listdir(target)):
+            if name.startswith("."):
+                continue
+            full = os.path.join(target, name)
+            entry_rel = os.path.join(rel, name) if rel else name
+            if os.path.isdir(full):
+                try:
+                    count = len([n for n in os.listdir(full) if not n.startswith(".")])
+                except Exception:
+                    count = 0
+                entries.append({"name": name, "path": entry_rel, "type": "dir", "count": count})
+            else:
+                lower = name.lower()
+                size = os.path.getsize(full)
+                entries.append({
+                    "name": name,
+                    "path": entry_rel,
+                    "type": "file",
+                    "is_image": lower.endswith(image_exts),
+                    "is_text": lower.endswith(text_exts),
+                    "size": size,
+                })
+    except Exception as e:
+        return {"error": str(e), "entries": []}
+
+    # Pastas primeiro, depois arquivos
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    return {"path": rel, "parent": parent, "entries": entries}
+
+
+@app.get("/api/browse-file")
+async def browse_file_content(path: str = Query("")):
+    """Retorna o conteúdo de um arquivo de texto (parecer, roteiro, prompt)."""
+    target = _safe_resolve(path)
+    if target is None or not os.path.isfile(target):
+        return {"error": "Arquivo inválido ou inexistente."}
+    if os.path.getsize(target) > 2 * 1024 * 1024:
+        return {"error": "Arquivo muito grande para visualização."}
+    try:
+        with open(target, "r", encoding="utf-8", errors="replace") as f:
+            return {"content": f.read()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/browse-raw")
+async def browse_file_raw(path: str = Query("")):
+    """Serve um arquivo binário (imagem) de qualquer nível da árvore."""
+    target = _safe_resolve(path)
+    if target is None or not os.path.isfile(target):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return FileResponse(target)
+
+
+@app.delete("/api/browse")
+async def delete_browse_entry(path: str = Query("")):
+    """Exclui um arquivo OU uma pasta (recursivo) dentro de saved_comics."""
+    target = _safe_resolve(path)
+    base = os.path.abspath(get_saved_comics_dir())
+    if target is None or target == base:
+        return {"error": "Caminho inválido."}
+    if not os.path.exists(target):
+        return {"error": "Caminho não encontrado."}
+    try:
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+        return {"status": "success", "deleted": path}
     except Exception as e:
         return {"error": str(e)}
 
@@ -482,6 +1208,11 @@ async def drive_sync_all():
                 failed.append(f"{os.path.relpath(fpath, base_dir)} ({e})")
 
     return {"uploaded": len(uploaded), "failed": len(failed), "files": uploaded, "errors": failed}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.get("/saved_comics/{filename}")

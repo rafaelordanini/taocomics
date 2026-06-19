@@ -10,7 +10,11 @@ from pydantic import BaseModel
 app = FastAPI()
 
 AUTH_TOKEN = os.environ.get("WORKER_TOKEN", "")
-CODEX_BIN = os.path.expanduser("~/.local/bin/codex")
+CODEX_BIN = (
+    os.path.expanduser("~/.local/bin/codex")
+    if os.path.exists(os.path.expanduser("~/.local/bin/codex"))
+    else "/usr/local/bin/codex"
+)
 GEN_DIR = os.path.expanduser("~/.codex/generated_images")
 
 # job_id -> {"status": "pending"|"done"|"error", "b64_json": str, "error": str}
@@ -32,10 +36,46 @@ def _list_images():
     return imgs
 
 
-def _run_image_job(job_id: str, prompt: str):
+def _run_image_job(job_id: str, prompt: str, images_b64: list = None):
     before = {fp for fp, _ in _list_images()}
     full_prompt = f"Generate an image: {prompt}. Image size 1024x1536."
-    cmd = [CODEX_BIN, "--dangerously-bypass-approvals-and-sandbox", "exec", full_prompt, "--skip-git-repo-check"]
+
+    # Salva recortes de rosto de referência em disco e anexa os caminhos ao prompt
+    ref_paths = []
+    if images_b64:
+        ref_dir = os.path.expanduser("~/.codex/face_refs")
+        os.makedirs(ref_dir, exist_ok=True)
+        # Remove recortes de jobs antigos (mais de 1 hora)
+        cutoff = time.time() - 3600
+        for old in os.listdir(ref_dir):
+            old_path = os.path.join(ref_dir, old)
+            try:
+                if os.path.getmtime(old_path) < cutoff:
+                    os.remove(old_path)
+            except Exception:
+                pass
+        for idx, b64 in enumerate(images_b64[:4]):
+            try:
+                path = os.path.join(ref_dir, f"{job_id}_face_{idx}.png")
+                with open(path, "wb") as f:
+                    f.write(base64.b64decode(b64))
+                ref_paths.append(path)
+            except Exception:
+                pass
+    if ref_paths:
+        full_prompt += (
+            " IMPORTANT: first open and study these character face reference image files: "
+            + ", ".join(ref_paths)
+            + ". The characters in the generated image MUST have exactly these faces "
+            "(same facial features, hair, beard). Copy the faces faithfully."
+        )
+    cmd = [
+        CODEX_BIN,
+        "--dangerously-bypass-approvals-and-sandbox",
+        "exec",
+        full_prompt,
+        "--skip-git-repo-check",
+    ]
 
     try:
         result = subprocess.run(
@@ -43,7 +83,7 @@ def _run_image_job(job_id: str, prompt: str):
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=300,
         )
     except subprocess.TimeoutExpired:
         # Mata processos Codex zumbis para não travar a próxima geração
@@ -57,8 +97,18 @@ def _run_image_job(job_id: str, prompt: str):
         return
 
     if result.returncode != 0:
+        stderr_snippet = result.stderr[-500:] if result.stderr else ""
+        stdout_snippet = result.stdout[-300:] if result.stdout else ""
         with jobs_lock:
-            jobs[job_id] = {"status": "error", "error": f"Codex falhou: {result.stderr[:500]}"}
+            jobs[job_id] = {"status": "error", "error": f"Codex falhou (rc={result.returncode}): {stderr_snippet} | stdout: {stdout_snippet}"}
+        return
+
+    # Detecta resposta de compactação de contexto (Codex imprime resumo em vez de gerar imagem)
+    compaction_markers = ["context compaction", "compacting context", "summarizing conversation"]
+    stdout_lower = result.stdout.lower()
+    if any(m in stdout_lower for m in compaction_markers):
+        with jobs_lock:
+            jobs[job_id] = {"status": "error", "error": "Codex entrou em modo de compactação de contexto. Execute 'pkill -f codex' na VM e tente novamente."}
         return
 
     for _ in range(20):
@@ -68,8 +118,9 @@ def _run_image_job(job_id: str, prompt: str):
             break
         time.sleep(0.5)
     else:
+        stdout_snippet = result.stdout[-300:] if result.stdout else "(vazio)"
         with jobs_lock:
-            jobs[job_id] = {"status": "error", "error": "Codex executou mas nenhuma imagem foi gerada"}
+            jobs[job_id] = {"status": "error", "error": f"Codex executou mas nenhuma imagem foi gerada. stdout: {stdout_snippet}"}
         return
 
     new_imgs.sort(key=lambda x: x[1], reverse=True)
@@ -85,6 +136,7 @@ def _run_image_job(job_id: str, prompt: str):
 class GenerateRequest(BaseModel):
     prompt: str
     image_b64: str = None  # imagem opcional em base64 (PNG) para análise
+    images_b64: list = None  # recortes de rosto de referência (base64 PNG)
 
 
 @app.post("/generate-image")
@@ -96,7 +148,7 @@ def generate_image(req: GenerateRequest, authorization: str = Header(default="")
     with jobs_lock:
         jobs[job_id] = {"status": "pending"}
 
-    thread = threading.Thread(target=_run_image_job, args=(job_id, req.prompt), daemon=True)
+    thread = threading.Thread(target=_run_image_job, args=(job_id, req.prompt, req.images_b64), daemon=True)
     thread.start()
 
     return {"job_id": job_id}
