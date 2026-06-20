@@ -1570,6 +1570,8 @@ def _montar_prompt_artista_dsl(
         "digits or order labels on the panels. No panel may display a visible number. "
         "CRITICAL: Maintain absolute consistency in character faces, hairstyles, and CLOTHING/OUTFITS throughout all panels. "
         "Place 'caption' text in narrative boxes and 'bubble' text in speech bubbles, in Portuguese. "
+        "CRITICAL: speech bubbles must contain ONLY the spoken words — NEVER prefix with the character name "
+        "(e.g. NEVER write 'Laozi: ...', 'Intendente: ...', 'Mestre: ...' — just the dialogue text itself). "
         "Apply all items in 'fixes' as corrections. "
         + titulo_aviso
         + "JSON spec:\n"
@@ -1604,7 +1606,7 @@ def _orquestrador_montar_prompt_artista(
 
     # Legado: prompt em texto livre (compatibilidade com prompts antigos cacheados)
     base = _comprimir_prompt_designer(g_client, prompt_designer)
-    parts = [base, "Draw 1-10 comic panels per page with varied layout. Include speech bubbles and narrative boxes. NEVER draw numbers or order labels on the panels — reading order comes from position only."]
+    parts = [base, "Draw 1-10 comic panels per page with varied layout. Include speech bubbles and narrative boxes. NEVER draw numbers or order labels on the panels — reading order comes from position only. CRITICAL: speech bubbles must show ONLY the spoken words — NEVER prefix with character names (e.g. NEVER write 'Laozi: ...', 'Intendente: ...' — just the dialogue text itself)."]
 
     corrections = []
     if feedback_revisor:
@@ -1851,6 +1853,13 @@ def _revisor_primary(
             f"recorrente aparentar ser uma pessoa diferente (rosto, idade ou vestimenta inconsistente "
             f"com as páginas anteriores), descrevendo exatamente o que mudou.\n"
         )
+    prompt_text += (
+        f"{'8b' if num_pagina > 1 else '8'}c. IDENTIFICAÇÃO NOS BALÕES — CRÍTICO: Os balões de fala "
+        f"NÃO podem conter o nome do personagem como prefixo antes da fala "
+        f"(ex: 'Laozi: ...', 'Intendente: ...', 'Mestre: ...'). "
+        f"O balão deve conter APENAS o texto da fala. REPROVE imediatamente se houver qualquer "
+        f"prefixo de nome de personagem em algum balão.\n"
+    )
     if geral:
         prompt_text += f"9. Instruções Gerais:\n{geral}\n"
     if especifica:
@@ -1972,6 +1981,9 @@ def _revisor_fallback(
             f"topo ou rodapé (arte deve preencher todo o canvas 2:3).\n"
             f"8. QUANTIDADE E VARIEDADE DE QUADRINHOS: Entre 1 e 10 quadrinhos por página, com "
             f"formatos VARIADOS. REPROVE se houver mais de 10 painéis ou grade uniforme repetida.\n"
+            f"8c. IDENTIFICAÇÃO NOS BALÕES — CRÍTICO: Balões de fala NÃO podem ter o nome do personagem "
+            f"como prefixo (ex: 'Laozi: ...', 'Intendente: ...'). Apenas o texto da fala. "
+            f"REPROVE imediatamente se houver qualquer prefixo de nome nos balões.\n"
         )
         if geral:
             prompt_text += f"9. Instruções Gerais:\n{geral}\n"
@@ -2073,12 +2085,15 @@ def _revisor_fallback_claude(
         
     prompt_text += (
         f"4. Arte Final (Última Pág): Se esta for a página final (página {total_paginas}), a imagem DEVE ser uma arte própria que evidencie de forma poética e espiritual o encerramento do conto.\n"
+        f"5. IDENTIFICAÇÃO NOS BALÕES — CRÍTICO: Balões de fala NÃO podem conter o nome do personagem "
+        f"como prefixo antes da fala (ex: 'Laozi: ...', 'Intendente: ...', 'Mestre: ...'). "
+        f"O balão deve conter APENAS o texto da fala. REPROVE imediatamente se houver algum prefixo de nome.\n"
     )
     if geral:
-        prompt_text += f"5. Instruções Gerais de Auditoria do Revisor:\n{geral}\n"
+        prompt_text += f"6. Instruções Gerais de Auditoria do Revisor:\n{geral}\n"
     if especifica:
-        prompt_text += f"6. Instrução Específica de Auditoria do Revisor (PRIORIDADE ABSOLUTA - Suplanta as gerais se houver conflito):\n{especifica}\n"
-        
+        prompt_text += f"7. Instrução Específica de Auditoria do Revisor (PRIORIDADE ABSOLUTA - Suplanta as gerais se houver conflito):\n{especifica}\n"
+
     prompt_text += (
         "\nResponda APENAS 'APROVADO' se a página estiver adequada.\n"
         "Caso haja erros graves em relação a estas diretrizes, descreva detalhadamente os erros (em português) em um texto claro para que o artista ajuste o prompt e redesenhe."
